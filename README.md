@@ -1,35 +1,36 @@
-# Velocity - CS:GO Movement Trainer
+# Velocity - CS:GO Speed Overlay
 
-Показывает скорость игрока в реальном времени для тренировки движения в CS:GO.
+External overlay для отображения скорости игрока в CS:GO в реальном времени.
 
-## Версии
-
-### C++ (рекомендуется)
-```sh
-cd Velocity
-build.bat
-```
-Или через CMake:
-```sh
-cd Velocity
-mkdir build && cd build
-cmake .. -G "Visual Studio 17 2022" -A Win32
-cmake --build . --config Release
-```
-
-### Python
-```sh
-pip install -r requirements.txt
-python Velocity/Velocity.py
-```
+![Velocity Overlay](https://private-user-images.githubusercontent.com/168532046/524657583-6b1b5c9b-9373-4db8-9b75-bbc11156e884.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NjUzNjE3MzEsIm5iZiI6MTc2NTM2MTQzMSwicGF0aCI6Ii8xNjg1MzIwNDYvNTI0NjU3NTgzLTZiMWI1YzliLTkzNzMtNGRiOC05Yjc1LWJiYzExMTU2ZTg4NC5wbmc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjUxMjEwJTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI1MTIxMFQxMDEwMzFaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT1iMzAzMWZhMWViYWFhNjNmMDYyZTE1MTcxZDU3NjM4NjJlMjNhNmQ5NjlmNDM2NmFmNzZhNDA4OWYyM2ZkZmY5JlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCJ9.wHrsmmBZfn4yKhUHOWoAgd8bLahmOWkdkc-ZfgbzXeY)
 
 ## Функции
-- Отображение текущей скорости игрока
-- Первое число - текущая скорость
-- Число в скобках - максимальная скорость предыдущего движения
+- Overlay поверх игры с текущей скоростью
+- Формат: `скорость (последняя)` — например `247 (240)`
+- Цвет меняется в зависимости от скорости
+
+## Сборка
+
+Открой `Velocity/Velocity.sln` в Visual Studio и собери проект (Release x86).
+
+Или через командную строку:
+```sh
+cd Velocity
+msbuild Velocity.sln /p:Configuration=Release /p:Platform=x86
+```
+
+## Использование
+
+1. Запусти CS:GO
+2. Запусти `Velocity.exe` от имени администратора
+3. Зайди на карту
+4. ESC для выхода
 
 ## Оффсеты
-Оффсеты из [hazedumper](https://github.com/frk1/hazedumper) в папке `Offsets/`
+
+Оффсеты в папке `Offsets/` — нужно обновлять под актуальную версию игры.
+Свежие оффсеты: [hazedumper](https://github.com/frk1/hazedumper)
 
 ## Лицензия
-MIT License - см. файл `LICENSE`
+
+MIT License

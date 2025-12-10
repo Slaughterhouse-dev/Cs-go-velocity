@@ -69,7 +69,16 @@ T ReadMemory(uintptr_t address) {
 }
 
 uintptr_t GetLocalPlayer() {
-    return ReadMemory<uintptr_t>(clientBase + offsets::dwLocalPlayer);
+    // Пробуем прямое чтение
+    uintptr_t player = ReadMemory<uintptr_t>(clientBase + offsets::dwLocalPlayer);
+    if (player) return player;
+    
+    // Пробуем как указатель на указатель
+    uintptr_t ptr = ReadMemory<uintptr_t>(clientBase + offsets::dwLocalPlayer);
+    if (ptr) {
+        player = ReadMemory<uintptr_t>(ptr);
+    }
+    return player;
 }
 
 float GetVelocity() {
