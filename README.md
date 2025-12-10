@@ -1,4 +1,4 @@
-# Velocity - CS2 Movement Cheat
+# Velocity - Cs go Movement Cheat
 
 Показывает скорость игрока в реальном времени для тренировки движения в CS2.
 
