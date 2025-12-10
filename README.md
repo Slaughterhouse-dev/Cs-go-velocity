@@ -2,32 +2,34 @@
 
 Показывает скорость игрока в реальном времени для тренировки движения в CS:GO.
 
-## Установка
+## Версии
 
-Python 3.10+
+### C++ (рекомендуется)
 ```sh
-pip install -r requirements.txt
+cd Velocity
+build.bat
+```
+Или через CMake:
+```sh
+cd Velocity
+mkdir build && cd build
+cmake .. -G "Visual Studio 17 2022" -A Win32
+cmake --build . --config Release
 ```
 
-## Запуск
+### Python
 ```sh
+pip install -r requirements.txt
 python Velocity/Velocity.py
 ```
 
 ## Функции
 - Отображение текущей скорости игрока
-
-![Velocity](https://github.com/user-attachments/assets/6b1b5c9b-9373-4db8-9b75-bbc11156e884)
-
 - Первое число - текущая скорость
-- Число в скобках - предыдущая скорость
-- Работает в оконном режиме ("В окне" или "Полноэкранный в окне")
+- Число в скобках - максимальная скорость предыдущего движения
 
 ## Оффсеты
-Оффсеты загружаются автоматически с [hazedumper](https://github.com/frk1/hazedumper)
-
-## Ошибка с imgui
-При установке imgui может возникнуть ошибка из-за отсутствия Microsoft C++ Compiler. Скачать можно здесь: [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/ru/visual-cpp-build-tools/)
+Оффсеты из [hazedumper](https://github.com/frk1/hazedumper) в папке `Offsets/`
 
 ## Лицензия
 MIT License - см. файл `LICENSE`
