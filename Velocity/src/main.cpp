@@ -7,15 +7,22 @@
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "gdi32.lib")
 
-// Оффсеты для CS:GO
+// Оффсеты для CS:GO (hazedumper)
 namespace offsets {
+    // signatures
+    constexpr uintptr_t dwClientState = 0x59F19C;
+    constexpr uintptr_t dwClientState_GetLocalPlayer = 0x180;
+    constexpr uintptr_t dwEntityList = 0x4E0102C;
     constexpr uintptr_t dwLocalPlayer = 0xDEB99C;
+    // netvars
     constexpr uintptr_t m_vecVelocity = 0x114;
+    constexpr uintptr_t m_iHealth = 0x100;
 }
 
 // Глобальные переменные
 HANDLE hProcess = nullptr;
 uintptr_t clientBase = 0;
+uintptr_t engineBase = 0;
 HWND overlayWnd = nullptr;
 HWND gameWnd = nullptr;
 float currentSpeed = 0.0f;
@@ -68,15 +75,23 @@ T ReadMemory(uintptr_t address) {
     return value;
 }
 
+// Получение entity по индексу
+uintptr_t GetClientEntity(int index) {
+    return ReadMemory<uintptr_t>(clientBase + offsets::dwEntityList + index * 0x10);
+}
+
 uintptr_t GetLocalPlayer() {
-    // Пробуем прямое чтение
+    // Способ 1: через dwLocalPlayer напрямую
     uintptr_t player = ReadMemory<uintptr_t>(clientBase + offsets::dwLocalPlayer);
     if (player) return player;
     
-    // Пробуем как указатель на указатель
-    uintptr_t ptr = ReadMemory<uintptr_t>(clientBase + offsets::dwLocalPlayer);
-    if (ptr) {
-        player = ReadMemory<uintptr_t>(ptr);
+    // Способ 2: через engine -> ClientState -> GetLocalPlayer -> EntityList
+    uintptr_t clientState = ReadMemory<uintptr_t>(engineBase + offsets::dwClientState);
+    if (clientState) {
+        int localPlayerIndex = ReadMemory<int>(clientState + offsets::dwClientState_GetLocalPlayer);
+        if (localPlayerIndex >= 0) {
+            player = GetClientEntity(localPlayerIndex);
+        }
     }
     return player;
 }
@@ -84,13 +99,16 @@ uintptr_t GetLocalPlayer() {
 float GetVelocity() {
     uintptr_t localPlayer = GetLocalPlayer();
     if (!localPlayer) {
-        printf("\rLocalPlayer: NULL                    ");
+        printf("\rLocalPlayer: NULL                              ");
         return 0.0f;
     }
+    
+    int health = ReadMemory<int>(localPlayer + offsets::m_iHealth);
     float velX = ReadMemory<float>(localPlayer + offsets::m_vecVelocity);
     float velY = ReadMemory<float>(localPlayer + offsets::m_vecVelocity + 4);
     float speed = sqrtf(velX * velX + velY * velY);
-    printf("\rLP: 0x%IX | Vel: %.1f, %.1f | Speed: %.0f   ", localPlayer, velX, velY, speed);
+    
+    printf("\rLP: 0x%IX | HP: %d | Speed: %.0f        ", localPlayer, health, speed);
     return speed;
 }
 
@@ -103,22 +121,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             RECT rect;
             GetClientRect(hwnd, &rect);
             
-            // Прозрачный фон
             SetBkMode(hdc, TRANSPARENT);
-            
-            // Зелёный текст как на скриншоте
             SelectObject(hdc, hFont);
-            SetTextColor(hdc, RGB(0, 255, 0));
             
-            // Формат: "247 (240)"
             char text[64];
             sprintf_s(text, "%d (%d)", (int)currentSpeed, (int)lastSpeed);
             
-            // Центр экрана, чуть ниже середины
             int x = rect.right / 2;
             int y = rect.bottom / 2 + 100;
             
-            // Тень для читаемости
+            // Тень
             SetTextColor(hdc, RGB(0, 50, 0));
             TextOutA(hdc, x - 48, y + 2, text, (int)strlen(text));
             
@@ -139,15 +151,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 void UpdateOverlayPosition() {
     if (!gameWnd || !overlayWnd) return;
-    
     RECT gameRect;
     GetWindowRect(gameWnd, &gameRect);
-    
-    int width = gameRect.right - gameRect.left;
-    int height = gameRect.bottom - gameRect.top;
-    
     SetWindowPos(overlayWnd, HWND_TOPMOST, 
-        gameRect.left, gameRect.top, width, height,
+        gameRect.left, gameRect.top, 
+        gameRect.right - gameRect.left, 
+        gameRect.bottom - gameRect.top,
         SWP_NOACTIVATE);
 }
 
@@ -168,9 +177,7 @@ HWND CreateOverlayWindow() {
         nullptr, nullptr, GetModuleHandle(nullptr), nullptr
     );
 
-    // Чёрный = прозрачный
     SetLayeredWindowAttributes(hwnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
-    
     ShowWindow(hwnd, SW_SHOW);
     return hwnd;
 }
@@ -194,10 +201,8 @@ DWORD WINAPI UpdateThread(LPVOID) {
             wasMoving = false;
         }
         
-        // Обновляем позицию и перерисовываем
         UpdateOverlayPosition();
         InvalidateRect(overlayWnd, nullptr, TRUE);
-        
         Sleep(16);
     }
     return 0;
@@ -222,23 +227,26 @@ int main() {
     }
     
     clientBase = GetModuleBaseAddress(pid, L"client.dll");
-    if (!clientBase) {
-        printf("Error: client.dll not found!\n");
+    engineBase = GetModuleBaseAddress(pid, L"engine.dll");
+    
+    if (!clientBase || !engineBase) {
+        printf("Error: modules not found!\n");
+        printf("client.dll: 0x%IX\n", clientBase);
+        printf("engine.dll: 0x%IX\n", engineBase);
         CloseHandle(hProcess);
         system("pause");
         return 1;
     }
     
-    // Ищем окно игры
     gameWnd = FindWindowA(nullptr, "Counter-Strike: Global Offensive");
     if (!gameWnd) {
         gameWnd = FindWindowA(nullptr, "Counter-Strike: Global Offensive - Direct3D 9");
     }
     
     printf("client.dll: 0x%IX\n", clientBase);
-    printf("Press ESC to exit\n");
+    printf("engine.dll: 0x%IX\n", engineBase);
+    printf("Press ESC to exit\n\n");
     
-    // Шрифт как на скриншоте
     hFont = CreateFontA(32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH, "Arial");
