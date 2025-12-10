@@ -1,11 +1,12 @@
 #include <Windows.h>
-#include <TlHelp32.h>
+#include <d3d9.h>
 #include <cmath>
 #include <cstdio>
+#include <Psapi.h>
 #include <vector>
-#include <dwmapi.h>
 
-#pragma comment(lib, "dwmapi.lib")
+#pragma comment(lib, "d3d9.lib")
+#pragma comment(lib, "psapi.lib")
 
 // ============ NETVARS ============
 namespace netvars {
@@ -15,9 +16,6 @@ namespace netvars {
 }
 
 // Глобальные
-HANDLE hProcess = NULL;
-HWND gameWnd = NULL;
-HWND overlayWnd = NULL;
 uintptr_t clientBase = 0;
 uintptr_t clientSize = 0;
 uintptr_t dwLocalPlayer = 0;
@@ -26,61 +24,37 @@ float currentSpeed = 0.0f;
 float lastSpeed = 0.0f;
 float maxSpeed = 0.0f;
 bool wasMoving = false;
-bool isRunning = true;
+bool shouldExit = false;
 
 HFONT hFont = NULL;
+HMODULE hModule = NULL;
+HWND gameWnd = NULL;
+WNDPROC oWndProc = nullptr;
 
 // ============ MEMORY ============
-DWORD GetProcessId(const wchar_t* processName) {
-    DWORD pid = 0;
-    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snap != INVALID_HANDLE_VALUE) {
-        PROCESSENTRY32W pe;
-        pe.dwSize = sizeof(pe);
-        if (Process32FirstW(snap, &pe)) {
-            do {
-                if (_wcsicmp(pe.szExeFile, processName) == 0) {
-                    pid = pe.th32ProcessID;
-                    break;
-                }
-            } while (Process32NextW(snap, &pe));
-        }
-        CloseHandle(snap);
+uintptr_t GetModuleInfo(const wchar_t* moduleName, uintptr_t* size) {
+    HMODULE hMod = GetModuleHandleW(moduleName);
+    if (!hMod) return 0;
+    MODULEINFO modInfo;
+    if (GetModuleInformation(GetCurrentProcess(), hMod, &modInfo, sizeof(modInfo))) {
+        if (size) *size = modInfo.SizeOfImage;
+        return (uintptr_t)modInfo.lpBaseOfDll;
     }
-    return pid;
-}
-
-uintptr_t GetModuleBase(DWORD pid, const wchar_t* moduleName, uintptr_t* size) {
-    uintptr_t base = 0;
-    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
-    if (snap != INVALID_HANDLE_VALUE) {
-        MODULEENTRY32W me;
-        me.dwSize = sizeof(me);
-        if (Module32FirstW(snap, &me)) {
-            do {
-                if (_wcsicmp(me.szModule, moduleName) == 0) {
-                    base = (uintptr_t)me.modBaseAddr;
-                    if (size) *size = me.modBaseSize;
-                    break;
-                }
-            } while (Module32NextW(snap, &me));
-        }
-        CloseHandle(snap);
-    }
-    return base;
+    return 0;
 }
 
 template<typename T>
 T Read(uintptr_t address) {
-    T value = T();
-    ReadProcessMemory(hProcess, (LPCVOID)address, &value, sizeof(T), NULL);
-    return value;
+    if (address == 0) return T();
+    __try { return *(T*)address; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return T(); }
 }
 
 // ============ PATTERN SCANNING ============
-std::vector<BYTE> ParsePattern(const char* pattern, std::vector<bool>& mask) {
+uintptr_t PatternScan(uintptr_t base, uintptr_t size, const char* pattern) {
     std::vector<BYTE> bytes;
-    mask.clear();
+    std::vector<bool> mask;
+    
     const char* p = pattern;
     while (*p) {
         while (*p == ' ') p++;
@@ -97,35 +71,18 @@ std::vector<BYTE> ParsePattern(const char* pattern, std::vector<bool>& mask) {
             p += 2;
         }
     }
-    return bytes;
-}
-
-uintptr_t PatternScan(uintptr_t base, uintptr_t size, const char* pattern) {
-    std::vector<bool> mask;
-    std::vector<BYTE> patternBytes = ParsePattern(pattern, mask);
-    const SIZE_T chunkSize = 0x100000;
-    BYTE* buffer = new BYTE[chunkSize + patternBytes.size()];
     
-    for (uintptr_t offset = 0; offset < size; offset += chunkSize) {
-        SIZE_T toRead = min(chunkSize + patternBytes.size(), size - offset);
-        SIZE_T bytesRead = 0;
-        if (!ReadProcessMemory(hProcess, (LPCVOID)(base + offset), buffer, toRead, &bytesRead))
-            continue;
-        for (SIZE_T i = 0; i < bytesRead - patternBytes.size(); i++) {
-            bool found = true;
-            for (SIZE_T j = 0; j < patternBytes.size(); j++) {
-                if (mask[j] && buffer[i + j] != patternBytes[j]) {
-                    found = false;
-                    break;
-                }
-            }
-            if (found) {
-                delete[] buffer;
-                return base + offset + i;
+    BYTE* mem = (BYTE*)base;
+    for (uintptr_t i = 0; i < size - bytes.size(); i++) {
+        bool found = true;
+        for (size_t j = 0; j < bytes.size(); j++) {
+            if (mask[j] && mem[i + j] != bytes[j]) {
+                found = false;
+                break;
             }
         }
+        if (found) return base + i;
     }
-    delete[] buffer;
     return 0;
 }
 
@@ -133,7 +90,7 @@ uintptr_t FindLocalPlayer() {
     const char* pattern = "8D 34 85 ? ? ? ? 89 15 ? ? ? ? 8B 41 08 8B 48 04 83 F9 FF";
     uintptr_t addr = PatternScan(clientBase, clientSize, pattern);
     if (!addr) return 0;
-    uintptr_t ptr = Read<uintptr_t>(addr + 3);
+    uintptr_t ptr = *(uintptr_t*)(addr + 3);
     return (ptr - clientBase) + 4;
 }
 
@@ -153,10 +110,9 @@ float GetVelocity() {
     return speed;
 }
 
-// ============ OVERLAY ============
-LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, MSG* pMsg, LRESULT* pResult) {
-    return DefWindowProcA(hwnd, msg, (WPARAM)pMsg, (LPARAM)pResult);
-}
+// ============ OVERLAY WINDOW ============
+HWND overlayWnd = NULL;
+bool overlayVisible = true;
 
 LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
@@ -164,25 +120,26 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
         
-        // Прозрачный фон
         RECT rc;
         GetClientRect(hwnd, &rc);
         
-        // Рисуем текст
         SetBkMode(hdc, TRANSPARENT);
         SelectObject(hdc, hFont);
         
         char text[64];
         sprintf_s(text, "%d (%d)", (int)currentSpeed, (int)lastSpeed);
         
-        int x = rc.right / 2;
+        // Центр экрана
+        SIZE textSize;
+        GetTextExtentPoint32A(hdc, text, (int)strlen(text), &textSize);
+        int x = (rc.right - textSize.cx) / 2;
         int y = rc.bottom / 2 + 100;
         
         // Тень
         SetTextColor(hdc, RGB(0, 80, 0));
         TextOutA(hdc, x + 2, y + 2, text, (int)strlen(text));
         
-        // Основной текст - зелёный
+        // Основной текст
         SetTextColor(hdc, RGB(0, 255, 0));
         TextOutA(hdc, x, y, text, (int)strlen(text));
         
@@ -190,73 +147,104 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         return 0;
     }
     case WM_DESTROY:
-        isRunning = false;
-        PostQuitMessage(0);
+        overlayWnd = NULL;
         return 0;
     }
     return DefWindowProcA(hwnd, msg, wParam, lParam);
 }
 
-void CreateOverlay() {
+void CreateOverlayWindow() {
     WNDCLASSEXA wc = {};
     wc.cbSize = sizeof(wc);
     wc.style = CS_HREDRAW | CS_VREDRAW;
     wc.lpfnWndProc = OverlayProc;
-    wc.hInstance = GetModuleHandle(NULL);
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wc.hInstance = hModule;
     wc.hbrBackground = (HBRUSH)CreateSolidBrush(RGB(0, 0, 0));
-    wc.lpszClassName = "VelocityOverlay";
+    wc.lpszClassName = "VelocityOverlayInternal";
     RegisterClassExA(&wc);
     
     RECT gameRect;
-    GetWindowRect(gameWnd, &gameRect);
+    GetClientRect(gameWnd, &gameRect);
+    
+    POINT pt = { 0, 0 };
+    ClientToScreen(gameWnd, &pt);
     
     overlayWnd = CreateWindowExA(
         WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-        "VelocityOverlay",
-        "Velocity",
+        "VelocityOverlayInternal",
+        NULL,
         WS_POPUP,
-        gameRect.left, gameRect.top,
-        gameRect.right - gameRect.left,
-        gameRect.bottom - gameRect.top,
-        NULL, NULL, GetModuleHandle(NULL), NULL
+        pt.x, pt.y,
+        gameRect.right, gameRect.bottom,
+        NULL, NULL, hModule, NULL
     );
     
-    // Прозрачность - чёрный цвет будет прозрачным
     SetLayeredWindowAttributes(overlayWnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
-    
-    // Исключить из захвата экрана (OBS, записи и т.д.)
     SetWindowDisplayAffinity(overlayWnd, WDA_EXCLUDEFROMCAPTURE);
     
-    // Шрифт
-    hFont = CreateFontA(
-        48, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Arial"
-    );
-    
     ShowWindow(overlayWnd, SW_SHOW);
-    UpdateWindow(overlayWnd);
 }
 
-void UpdateOverlay() {
-    if (!gameWnd || !overlayWnd) return;
+void UpdateOverlayPosition() {
+    if (!overlayWnd || !gameWnd) return;
     
     RECT gameRect;
-    GetWindowRect(gameWnd, &gameRect);
+    GetClientRect(gameWnd, &gameRect);
+    
+    POINT pt = { 0, 0 };
+    ClientToScreen(gameWnd, &pt);
     
     SetWindowPos(overlayWnd, HWND_TOPMOST,
-        gameRect.left, gameRect.top,
-        gameRect.right - gameRect.left,
-        gameRect.bottom - gameRect.top,
+        pt.x, pt.y,
+        gameRect.right, gameRect.bottom,
         SWP_NOACTIVATE);
-    
-    InvalidateRect(overlayWnd, NULL, TRUE);
 }
 
-// ============ MAIN ============
-DWORD WINAPI UpdateThread(LPVOID) {
-    while (isRunning) {
+// ============ MAIN THREAD ============
+DWORD WINAPI MainThread(LPVOID lpParam) {
+    // Ждём client.dll
+    while (!(clientBase = GetModuleInfo(L"client.dll", &clientSize))) {
+        Sleep(100);
+    }
+    Sleep(500);
+    
+    // Консоль
+    AllocConsole();
+    FILE* f;
+    freopen_s(&f, "CONOUT$", "w", stdout);
+    
+    printf("=== Velocity Internal ===\n");
+    printf("client.dll: 0x%IX\n", clientBase);
+    
+    // Pattern scan
+    dwLocalPlayer = FindLocalPlayer();
+    if (dwLocalPlayer) {
+        printf("dwLocalPlayer: 0x%X\n", (unsigned)dwLocalPlayer);
+    } else {
+        printf("Pattern not found!\n");
+    }
+    
+    // Ждём окно игры
+    while (!(gameWnd = FindWindowA(NULL, "Counter-Strike: Global Offensive - Direct3D 9"))) {
+        gameWnd = FindWindowA(NULL, "Counter-Strike: Global Offensive");
+        if (gameWnd) break;
+        Sleep(100);
+    }
+    printf("Game window: 0x%IX\n", (uintptr_t)gameWnd);
+    
+    // Шрифт
+    hFont = CreateFontA(48, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Arial");
+    
+    // Создаём overlay
+    CreateOverlayWindow();
+    printf("Overlay created!\n");
+    printf("\nHOME to unload.\n");
+    
+    // Главный цикл
+    while (!shouldExit) {
+        // Обновляем скорость
         float speed = GetVelocity();
         currentSpeed = speed;
         
@@ -271,92 +259,46 @@ DWORD WINAPI UpdateThread(LPVOID) {
             wasMoving = false;
         }
         
-        // Проверяем окно игры
-        gameWnd = FindWindowA(NULL, "Counter-Strike: Global Offensive - Direct3D 9");
-        if (!gameWnd) gameWnd = FindWindowA(NULL, "Counter-Strike: Global Offensive");
-        
-        if (gameWnd && overlayWnd) {
-            UpdateOverlay();
+        // Обновляем overlay
+        UpdateOverlayPosition();
+        if (overlayWnd) {
+            InvalidateRect(overlayWnd, NULL, TRUE);
+            UpdateWindow(overlayWnd);
         }
         
         // HOME для выхода
         if (GetAsyncKeyState(VK_HOME) & 1) {
-            isRunning = false;
+            shouldExit = true;
+        }
+        
+        // Обработка сообщений overlay
+        MSG msg;
+        while (PeekMessage(&msg, overlayWnd, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
         }
         
         Sleep(16);
     }
+    
+    // Cleanup
+    printf("Unloading...\n");
+    
+    if (overlayWnd) DestroyWindow(overlayWnd);
+    if (hFont) DeleteObject(hFont);
+    
+    Sleep(100);
+    if (f) fclose(f);
+    FreeConsole();
+    FreeLibraryAndExitThread((HMODULE)lpParam, 0);
     return 0;
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
-    // Консоль для отладки
-    AllocConsole();
-    FILE* f;
-    freopen_s(&f, "CONOUT$", "w", stdout);
-    
-    printf("=== Velocity Overlay ===\n\n");
-    
-    // Ждём CS:GO
-    printf("Waiting for csgo.exe...\n");
-    DWORD pid = 0;
-    while (!(pid = GetProcessId(L"csgo.exe"))) {
-        Sleep(1000);
+BOOL APIENTRY DllMain(HMODULE hMod, DWORD reason, LPVOID) {
+    if (reason == DLL_PROCESS_ATTACH) {
+        hModule = hMod;
+        DisableThreadLibraryCalls(hMod);
+        CreateThread(NULL, 0, MainThread, hMod, 0, NULL);
     }
-    printf("Found csgo.exe (PID: %d)\n", pid);
-    
-    hProcess = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
-    if (!hProcess) {
-        printf("Failed! Run as Administrator.\n");
-        Sleep(3000);
-        return 1;
-    }
-    
-    // Ждём client.dll
-    printf("Waiting for client.dll...\n");
-    while (!(clientBase = GetModuleBase(pid, L"client.dll", &clientSize))) {
-        Sleep(500);
-    }
-    printf("client.dll: 0x%IX\n", clientBase);
-    
-    // Pattern scan
-    printf("Pattern scanning...\n");
-    dwLocalPlayer = FindLocalPlayer();
-    if (dwLocalPlayer) {
-        printf("dwLocalPlayer: 0x%X\n", (unsigned)dwLocalPlayer);
-    } else {
-        printf("Pattern not found!\n");
-    }
-    
-    // Ждём окно игры
-    printf("Waiting for game window...\n");
-    while (!(gameWnd = FindWindowA(NULL, "Counter-Strike: Global Offensive - Direct3D 9"))) {
-        gameWnd = FindWindowA(NULL, "Counter-Strike: Global Offensive");
-        if (gameWnd) break;
-        Sleep(500);
-    }
-    printf("Game window found!\n");
-    
-    // Создаём overlay
-    CreateOverlay();
-    printf("\nOverlay created. HOME to exit.\n");
-    
-    // Поток обновления
-    CreateThread(NULL, 0, UpdateThread, NULL, 0, NULL);
-    
-    // Message loop
-    MSG msg;
-    while (isRunning && GetMessage(&msg, NULL, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
-    
-    // Cleanup
-    if (hFont) DeleteObject(hFont);
-    if (overlayWnd) DestroyWindow(overlayWnd);
-    CloseHandle(hProcess);
-    if (f) fclose(f);
-    FreeConsole();
-    
-    return 0;
+    return TRUE;
 }
