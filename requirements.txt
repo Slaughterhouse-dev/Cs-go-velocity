@@ -1,5 +1,5 @@
 pymem
-win32
+pywin32
 glfw
 imgui[full]
 PyOpenGL
