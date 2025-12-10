@@ -1,46 +1,27 @@
-# Cs-go-velocity on python
-Velocity Speed for your player
+# Velocity - CS2 Movement Cheat
 
-This is a simple and functional ESP (Extra Sensory Perception) cheat for CS2 that allows you to see enemies through walls. The cheat works only in windowed mode ("In the window" or "Fullscreen in the window") and includes a number of settings that can be changed.
+Показывает скорость игрока в реальном времени для тренировки движения в CS2.
 
 ![image](https://github.com/user-attachments/assets/685bb2ce-232a-4670-b1a5-aacb29a4e976)
 
-# To install:
+## Установка
 
 Python 3.10+
 ```sh
 pip install -r requirements.txt
 ```
 
-or
-
-Download cheat in [releases](https://github.com/Read1dno/CS2ESP-external-cheat/releases/tag/v0.0.1)
-
-# Launch
+## Запуск
 ```sh
-python CS2ESP.py
+python Velocity/CS2ESP.py
 ```
-or
 
-Run the cheat in [releases](https://github.com/Read1dno/CS2ESP-external-cheat/releases/tag/v0.0.1)
+## Функции
+- Отображение текущей скорости игрока
+- Работает в оконном режиме ("В окне" или "Полноэкранный в окне")
 
-# Using
-- Change the resolution of cs2 to yours.
-- Enable ESP rendering (by default).
-- On/off ESP for teammates
-- On/off line drawing.
-- On/off HP strip display.
-- On/off rendering of the head hitbox.
+## Ошибка с imgui
+При установке imgui может возникнуть ошибка из-за отсутствия Microsoft C++ Compiler. Скачать можно здесь: [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/ru/visual-cpp-build-tools/)
 
-# Erorr
-I noticed that when installing "imgui" via pip, the error "ERROR: Failed to build installable wheels for some pyproject.toml based projects (imgui)" may occur due to the fact that you do not have Microsoft C++ Compiler installed. You can download it here - [Microsoft C++ Compiler](https://visualstudio.microsoft.com/ru/visual-cpp-build-tools/)
-
-or
-
-Download cheat in [releases](https://github.com/Read1dno/CS2ESP-external-cheat/releases/tag/v0.0.1)
-
-# LICENSE
-This project is licensed under the terms of the MIT License - see the `LICENSE` file for details.
-
-Go to the Discord channel - https://discord.gg/n89PDURbTg
-:D
+## Лицензия
+MIT License - см. файл `LICENSE`
