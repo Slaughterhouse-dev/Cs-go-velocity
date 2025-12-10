@@ -16,23 +16,25 @@ WINDOW_HEIGHT = 100
 print("Загрузка оффсетов...")
 
 def load_offsets():
-    # Пробуем hazedumper
-    try:
-        offsets = requests.get('https://raw.githubusercontent.com/frk1/hazedumper/master/csgo.json', timeout=5).json()
-        return offsets['signatures']['dwLocalPlayer'], offsets['netvars']['m_vecVelocity']
-    except:
-        pass
+    # Пробуем несколько источников hazedumper
+    urls = [
+        'https://raw.githubusercontent.com/frk1/hazedumper/master/csgo.json',
+        'https://raw.githubusercontent.com/KittenPopo/csgo-offsets/main/offsets.json',
+    ]
     
-    # Пробуем a2x/cs2-dumper для CS:GO (legacy)
-    try:
-        offsets = requests.get('https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/csgo/offsets.json', timeout=5).json()
-        client = requests.get('https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/csgo/client.dll.json', timeout=5).json()
-        return offsets['dwLocalPlayer'], client['C_BaseEntity']['m_vecVelocity']
-    except:
-        pass
+    for url in urls:
+        try:
+            data = requests.get(url, timeout=5).json()
+            if 'signatures' in data:
+                return data['signatures']['dwLocalPlayer'], data['netvars']['m_vecVelocity']
+            elif 'dwLocalPlayer' in data:
+                return data['dwLocalPlayer'], data.get('m_vecVelocity', 0x114)
+        except:
+            continue
     
-    # Локальные оффсеты (обновлены декабрь 2024)
-    return 0xDEA96C, 0x114
+    # Локальные оффсеты - последние известные рабочие
+    # m_vecVelocity обычно 0x114 (276 в десятичной)
+    return 0xDEB99C, 0x114
 
 dwLocalPlayer, m_vecVelocity = load_offsets()
 print(f"Оффсеты: dwLocalPlayer={hex(dwLocalPlayer)}, m_vecVelocity={hex(m_vecVelocity)}")
@@ -51,13 +53,23 @@ while True:
 print("CS:GO найден!")
 time.sleep(1)
 
+debug_info = ""
+
 def get_velocity():
     """Получает скорость локального игрока"""
-    global dwLocalPlayer, m_vecVelocity
+    global dwLocalPlayer, m_vecVelocity, debug_info
     
     try:
-        # Читаем указатель на локального игрока
+        # Пробуем разные способы чтения
+        # Способ 1: read_int (32-bit pointer)
         local_player = pm.read_int(client + dwLocalPlayer)
+        
+        # Способ 2: если первый не работает, пробуем read_uint
+        if not local_player:
+            local_player = pm.read_uint(client + dwLocalPlayer)
+        
+        debug_info = f"LP: {hex(local_player) if local_player else '0'}"
+        
         if not local_player:
             return -1  # Игрок не найден
         
@@ -65,13 +77,17 @@ def get_velocity():
         vel_x = pm.read_float(local_player + m_vecVelocity)
         vel_y = pm.read_float(local_player + m_vecVelocity + 4)
         
+        debug_info += f" V:{vel_x:.0f},{vel_y:.0f}"
+        
         # Вычисляем горизонтальную скорость
         speed = math.sqrt(vel_x**2 + vel_y**2)
         return int(speed)
-    except pymem.exception.MemoryReadError:
-        return -2  # Ошибка чтения памяти
+    except pymem.exception.MemoryReadError as e:
+        debug_info = f"MemErr: {e}"
+        return -2
     except Exception as e:
-        return -3  # Другая ошибка
+        debug_info = f"Err: {e}"
+        return -3
 
 def make_window_overlay(hwnd):
     """Делает окно оверлеем поверх всех окон включая игры"""
@@ -132,6 +148,11 @@ def main():
         text_surface = font.render(text, True, (0, 255, 0))
         text_rect = text_surface.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
         screen.blit(text_surface, text_rect)
+        
+        # Отладочная информация мелким шрифтом
+        small_font = pygame.font.Font(None, 24)
+        debug_surface = small_font.render(debug_info, True, (255, 255, 0))
+        screen.blit(debug_surface, (10, 10))
         
         prev_speed = speed
         
