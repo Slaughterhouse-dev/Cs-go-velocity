@@ -2,8 +2,6 @@
 
 Показывает скорость игрока в реальном времени для тренировки движения в CS2.
 
-![image](https://github.com/user-attachments/assets/685bb2ce-232a-4670-b1a5-aacb29a4e976)
-
 ## Установка
 
 Python 3.10+
