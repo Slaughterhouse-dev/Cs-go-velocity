@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 
 // 2023-09-05 21:12:09.438009200 UTC

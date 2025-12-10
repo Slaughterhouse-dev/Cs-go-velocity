@@ -4,7 +4,7 @@
 #include <cmath>
 #include <thread>
 #include <chrono>
-#include "offsets.hpp"
+#include "../../Offsets/hazedumper-master/csgo.hpp"
 
 // Глобальные переменные
 HANDLE hProcess = nullptr;
@@ -54,7 +54,6 @@ DWORD GetProcessId(const wchar_t* processName) {
     }
     return pid;
 }
-
 
 // Чтение памяти
 template<typename T>
@@ -109,7 +108,7 @@ int main() {
     
     std::wcout << L"CS:GO найден!" << std::endl;
     std::wcout << L"client.dll: 0x" << std::hex << clientBase << std::dec << std::endl;
-    std::wcout << L"\nНажми любую клавишу для выхода...\n" << std::endl;
+    std::wcout << L"\nНажми ESC для выхода...\n" << std::endl;
     
     float prevSpeed = 0.0f;
     float maxSpeed = 0.0f;
@@ -132,8 +131,7 @@ int main() {
         }
         
         // Очистка строки и вывод скорости
-        std::wcout << L"\r                              \r";
-        std::wcout << L"Скорость: " << (int)speed << L" (" << (int)prevSpeed << L")" << std::flush;
+        std::wcout << L"\rСкорость: " << (int)speed << L" (" << (int)prevSpeed << L")    " << std::flush;
         
         std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60 FPS
     }

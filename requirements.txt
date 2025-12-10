@@ -1,4 +1,0 @@
-pymem
-pywin32
-pygame
-requests
