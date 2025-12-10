@@ -1,6 +1,4 @@
 pymem
 pywin32
-glfw
-imgui[full]
-PyOpenGL
+pygame
 requests

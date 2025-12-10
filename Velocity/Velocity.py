@@ -1,26 +1,41 @@
 import pymem
 import pymem.process
-import win32gui, win32con
-import time, os
+import win32gui
+import win32con
+import win32api
+import time
+import os
 import math
-import imgui
-from imgui.integrations.glfw import GlfwRenderer
-import glfw
-import OpenGL.GL as gl
 import requests
+import pygame
 
-WINDOW_WIDTH = 1920
-WINDOW_HEIGHT = 1080
+WINDOW_WIDTH = 400
+WINDOW_HEIGHT = 100
 
-# Загружаем оффсеты CS:GO с hazedumper
-offsets = requests.get('https://raw.githubusercontent.com/frk1/hazedumper/master/csgo.json').json()
+# Загружаем актуальные оффсеты CS:GO с нескольких источников
+print("Загрузка оффсетов...")
 
-# Signatures
-dwLocalPlayer = offsets['signatures']['dwLocalPlayer']
+def load_offsets():
+    # Пробуем hazedumper
+    try:
+        offsets = requests.get('https://raw.githubusercontent.com/frk1/hazedumper/master/csgo.json', timeout=5).json()
+        return offsets['signatures']['dwLocalPlayer'], offsets['netvars']['m_vecVelocity']
+    except:
+        pass
+    
+    # Пробуем a2x/cs2-dumper для CS:GO (legacy)
+    try:
+        offsets = requests.get('https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/csgo/offsets.json', timeout=5).json()
+        client = requests.get('https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/csgo/client.dll.json', timeout=5).json()
+        return offsets['dwLocalPlayer'], client['C_BaseEntity']['m_vecVelocity']
+    except:
+        pass
+    
+    # Локальные оффсеты (обновлены декабрь 2024)
+    return 0xDEA96C, 0x114
 
-# Netvars
-m_vecVelocity = offsets['netvars']['m_vecVelocity']
-m_fFlags = offsets['netvars']['m_fFlags']
+dwLocalPlayer, m_vecVelocity = load_offsets()
+print(f"Оффсеты: dwLocalPlayer={hex(dwLocalPlayer)}, m_vecVelocity={hex(m_vecVelocity)}")
 
 # Ожидаем запуска csgo.exe
 print("Ожидание запуска CS:GO...")
@@ -33,98 +48,97 @@ while True:
     except:
         pass
 
-time.sleep(1)
-os.system("cls")
 print("CS:GO найден!")
+time.sleep(1)
 
 def get_velocity():
     """Получает скорость локального игрока"""
+    global dwLocalPlayer, m_vecVelocity
+    
     try:
+        # Читаем указатель на локального игрока
         local_player = pm.read_int(client + dwLocalPlayer)
         if not local_player:
-            return 0, 0
+            return -1  # Игрок не найден
         
-        # Читаем вектор скорости (x, y, z)
+        # Читаем вектор скорости
         vel_x = pm.read_float(local_player + m_vecVelocity)
         vel_y = pm.read_float(local_player + m_vecVelocity + 4)
-        vel_z = pm.read_float(local_player + m_vecVelocity + 8)
         
-        # Горизонтальная скорость (без учёта вертикальной)
-        speed_2d = math.sqrt(vel_x**2 + vel_y**2)
-        # Полная скорость
-        speed_3d = math.sqrt(vel_x**2 + vel_y**2 + vel_z**2)
-        
-        return int(speed_2d), int(speed_3d)
-    except:
-        return 0, 0
+        # Вычисляем горизонтальную скорость
+        speed = math.sqrt(vel_x**2 + vel_y**2)
+        return int(speed)
+    except pymem.exception.MemoryReadError:
+        return -2  # Ошибка чтения памяти
+    except Exception as e:
+        return -3  # Другая ошибка
+
+def make_window_overlay(hwnd):
+    """Делает окно оверлеем поверх всех окон включая игры"""
+    # Убираем рамку и делаем прозрачным
+    style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+    style = style | win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT | win32con.WS_EX_TOPMOST | win32con.WS_EX_NOACTIVATE
+    win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, style)
+    
+    # Чёрный цвет будет прозрачным
+    win32gui.SetLayeredWindowAttributes(hwnd, win32api.RGB(0, 0, 0), 0, win32con.LWA_COLORKEY)
 
 def main():
-    # Инициализация glfw
-    glfw.init()
-    glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, glfw.TRUE)
-    window = glfw.create_window(WINDOW_WIDTH, WINDOW_HEIGHT, "Velocity", None, None)
-
-    hwnd = glfw.get_win32_window(window)
-    style = win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE)
-    style &= ~(win32con.WS_CAPTION | win32con.WS_THICKFRAME)
-    win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE, style)
-    ex_style = win32con.WS_EX_TRANSPARENT | win32con.WS_EX_LAYERED
-    win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, ex_style)
-    win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, -2, -2, 0, 0,
-                          win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE)
-
-    glfw.make_context_current(window)
-    imgui.create_context()
-    impl = GlfwRenderer(window)
-
-    # Переменная для хранения предыдущей скорости (для отображения в скобках)
+    pygame.init()
+    
+    # Получаем размер экрана ДО создания окна
+    screen_info = pygame.display.Info()
+    screen_w = screen_info.current_w
+    screen_h = screen_info.current_h
+    
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.NOFRAME)
+    pygame.display.set_caption("Velocity")
+    
+    hwnd = pygame.display.get_wm_info()["window"]
+    
+    # Позиция окна (центр экрана, внизу)
+    pos_x = (screen_w - WINDOW_WIDTH) // 2
+    pos_y = screen_h - WINDOW_HEIGHT - 150  # 150 пикселей от низа экрана
+    
+    # Сразу ставим окно в нужную позицию
+    win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, pos_x, pos_y, 
+        WINDOW_WIDTH, WINDOW_HEIGHT, win32con.SWP_SHOWWINDOW)
+    
+    make_window_overlay(hwnd)
+    
+    font = pygame.font.Font(None, 72)
+    clock = pygame.time.Clock()
+    
     prev_speed = 0
-
-    # Основной цикл
-    while not glfw.window_should_close(window):
-        glfw.poll_events()
-        impl.process_inputs()
-        imgui.new_frame()
-
-        imgui.set_next_window_size(WINDOW_WIDTH, WINDOW_HEIGHT)
-        imgui.set_next_window_position(0, 0)
-        imgui.begin("Velocity Overlay",
-                    flags=imgui.WINDOW_NO_TITLE_BAR |
-                          imgui.WINDOW_NO_RESIZE |
-                          imgui.WINDOW_NO_SCROLLBAR |
-                          imgui.WINDOW_NO_COLLAPSE |
-                          imgui.WINDOW_NO_BACKGROUND)
-
-        draw_list = imgui.get_window_draw_list()
+    running = True
+    
+    while running:
+        # Держим окно поверх всех
+        win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, pos_x, pos_y, 0, 0, 
+            win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE)
         
-        # Получаем скорость
-        speed_2d, speed_3d = get_velocity()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                running = False
         
-        # Цвет в зависимости от скорости (зелёный)
-        color = imgui.get_color_u32_rgba(0, 1, 0, 1)
+        screen.fill((0, 0, 0))
         
-        # Позиция текста (центр экрана, чуть ниже)
-        text_x = WINDOW_WIDTH // 2 - 50
-        text_y = WINDOW_HEIGHT // 2 + 100
+        speed = get_velocity()
+        text = f"{speed} ({prev_speed})"
         
-        # Формат: "247 (240)" - текущая скорость и предыдущая в скобках
-        speed_text = f"{speed_2d} ({prev_speed})"
-        draw_list.add_text(text_x, text_y, color, speed_text)
+        # Зелёный цвет
+        text_surface = font.render(text, True, (0, 255, 0))
+        text_rect = text_surface.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
+        screen.blit(text_surface, text_rect)
         
-        # Обновляем предыдущую скорость
-        prev_speed = speed_2d
-
-        imgui.end()
-        imgui.end_frame()
-
-        gl.glClearColor(0, 0, 0, 0)
-        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-        imgui.render()
-        impl.render(imgui.get_draw_data())
-        glfw.swap_buffers(window)
-
-    impl.shutdown()
-    glfw.terminate()
+        prev_speed = speed
+        
+        pygame.display.flip()
+        clock.tick(60)
+    
+    pygame.quit()
 
 if __name__ == '__main__':
     main()
