@@ -1,7 +1,5 @@
 using System;
 
-// 2023-09-05 21:12:09.438009200 UTC
-
 namespace hazedumper
 {
     public const Int32 timestamp = 1693948329;
@@ -163,4 +161,4 @@ namespace hazedumper
         public const Int32 set_abs_angles = 0x1E8FC0;
         public const Int32 set_abs_origin = 0x1E8E00;
     }
-} // namespace hazedumper
+}
