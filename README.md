@@ -1,4 +1,4 @@
-# Velocity - CS:GO Speed Overlay
+# Velocity - Cs:go Speed Overlay
 
 Отображение скорости игрока в CS:GO в реальном времени.
 
