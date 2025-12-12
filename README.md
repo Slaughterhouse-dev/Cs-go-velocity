@@ -81,7 +81,3 @@ Dll для инжекта в процесс игры.
 - Visual Studio 2022
 - Windows SDK 10.0
 - CS:GO (не CS2!)
-
-## Лицензия
-
-MIT License
