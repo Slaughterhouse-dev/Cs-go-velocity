@@ -11,8 +11,8 @@
 ## Функции
 
 - Overlay поверх игры с текущей скоростью
-- Формат: `Скорость в настоящие время передвижение (последняя)` — например `230 (220)`
-- Pattern scanning — не нужно обновлять оффсеты вручную
+- Формат: `Скорость в настоящие время передвижение (последняя)` - например `230 (220)`
+- Pattern scanning - не нужно обновлять оффсеты вручную
 - Две версии: External (Exe) и Internal (Dll)
 
 ## Версии
@@ -26,10 +26,9 @@
 - Легко обновлять
 
 **Сборка:**
-```sh
-cd External
-msbuild External.sln /p:Configuration=Release /p:Platform=x86
-```
+1. Открой `External/External.sln` в Visual Studio 2022
+2. Выбери Release | x86
+3. Build → Build Solution (Ctrl+Shift+B) или же Локальный откладчик Windows
 
 **Использование:**
 1. Запусти Cs:go
@@ -43,14 +42,13 @@ Dll для инжекта в процесс игры.
 - Работает изнутри процесса
 
 **Сборка:**
-```sh
-cd Internal
-msbuild Internal.sln /p:Configuration=Release /p:Platform=x86
-```
+1. Открой `Internal/Internal.sln` в Visual Studio 2022
+2. Выбери Release | x86
+3. Build → Build Solution (Ctrl+Shift+B) или же Локальный откладчик Windows
 
 **Использование:**
 1. Запусти Cs:go
-2. Инжектни `Internal.dll` любым инжектором (Standard / LoadLibrary / Extreme Injector)
+2. Инжектни `Internal.dll` любым инжектором (Extreme Injector Standard / LoadLibrar)
 3. Готово
 
 ## Управление
@@ -64,12 +62,12 @@ msbuild Internal.sln /p:Configuration=Release /p:Platform=x86
 ## Структура проекта
 
 ```
-├── External/          # External версия (EXE)
+├── External/          # External версия (Exe)
 │   ├── src/
 │   │   └── main.cpp
 │   ├── External.sln
 │   └── External.vcxproj
-├── Internal/          # Internal версия (DLL)
+├── Internal/          # Internal версия (Dll)
 │   ├── src/
 │   │   └── main.cpp
 │   ├── Internal.sln
