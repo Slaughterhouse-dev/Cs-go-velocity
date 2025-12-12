@@ -1,4 +1,4 @@
-' 2023-09-05 21:12:09.438009200 UTC
+
 
 Namespace hazedumper
     Public Const timestamp as Integer = &H64F799A9
