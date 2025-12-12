@@ -6,14 +6,14 @@
 
 #pragma comment(lib, "psapi.lib")
 
-// ============ NETVARS ============
+// Internal Version
+
 namespace netvars {
     uintptr_t m_iHealth = 0x100;
     uintptr_t m_iTeamNum = 0xF4;
     uintptr_t m_vecVelocity = 0x114;
 }
 
-// Глобальные
 uintptr_t clientBase = 0;
 uintptr_t clientSize = 0;
 uintptr_t dwLocalPlayer = 0;
@@ -28,7 +28,6 @@ HWND overlayWnd = NULL;
 HFONT hFont = NULL;
 HMODULE hModule = NULL;
 
-// ============ MEMORY ============
 uintptr_t GetModuleInfo(const wchar_t* moduleName, uintptr_t* size) {
     HMODULE hMod = GetModuleHandleW(moduleName);
     if (!hMod) return 0;
@@ -47,7 +46,6 @@ T Read(uintptr_t address) {
     __except (EXCEPTION_EXECUTE_HANDLER) { return T(); }
 }
 
-// ============ PATTERN SCANNING ============
 uintptr_t PatternScan(uintptr_t base, uintptr_t size, const char* pattern) {
     std::vector<BYTE> bytes;
     std::vector<bool> mask;
@@ -91,7 +89,6 @@ uintptr_t FindLocalPlayer() {
     return (ptr - clientBase) + 4;
 }
 
-// ============ GAME ============
 uintptr_t GetLocalPlayer() {
     if (!dwLocalPlayer) return 0;
     return Read<uintptr_t>(clientBase + dwLocalPlayer);
@@ -107,36 +104,35 @@ float GetVelocity() {
     return speed;
 }
 
-// ============ OVERLAY ============
 LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
-    case WM_PAINT: {
-        PAINTSTRUCT ps;
-        HDC hdc = BeginPaint(hwnd, &ps);
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
         
-        RECT rc;
-        GetClientRect(hwnd, &rc);
+            RECT rc;
+            GetClientRect(hwnd, &rc);
         
-        SetBkMode(hdc, TRANSPARENT);
-        SelectObject(hdc, hFont);
+            SetBkMode(hdc, TRANSPARENT);
+            SelectObject(hdc, hFont);
         
-        char text[64];
-        sprintf_s(text, "%d (%d)", (int)currentSpeed, (int)lastSpeed);
+            char text[64];
+            sprintf_s(text, "%d (%d)", (int)currentSpeed, (int)lastSpeed);
         
-        SIZE sz;
-        GetTextExtentPoint32A(hdc, text, (int)strlen(text), &sz);
-        int x = (rc.right - sz.cx) / 2;
-        int y = rc.bottom / 2 + 100;
+            SIZE sz;
+            GetTextExtentPoint32A(hdc, text, (int)strlen(text), &sz);
+            int x = (rc.right - sz.cx) / 2;
+            int y = rc.bottom / 2 + 100;
         
-        SetTextColor(hdc, RGB(0, 60, 0));
-        TextOutA(hdc, x + 2, y + 2, text, (int)strlen(text));
+            SetTextColor(hdc, RGB(0, 60, 0));
+            TextOutA(hdc, x + 2, y + 2, text, (int)strlen(text));
         
-        SetTextColor(hdc, RGB(0, 255, 0));
-        TextOutA(hdc, x, y, text, (int)strlen(text));
+            SetTextColor(hdc, RGB(0, 255, 0));
+            TextOutA(hdc, x, y, text, (int)strlen(text));
         
-        EndPaint(hwnd, &ps);
-        return 0;
-    }
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
     }
     return DefWindowProcA(hwnd, msg, wParam, lParam);
 }
@@ -158,17 +154,24 @@ void CreateOverlay() {
     
     overlayWnd = CreateWindowExA(
         WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-        "VelocityInternal", NULL,
+        "VelocityInternal", 
+        NULL,
         WS_POPUP,
-        pt.x, pt.y, r.right, r.bottom,
-        NULL, NULL, hModule, NULL
+        pt.x, pt.y, 
+        r.right, 
+        r.bottom,
+        NULL, 
+        NULL, 
+        hModule, 
+        NULL
     );
     
     SetLayeredWindowAttributes(overlayWnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
     
     hFont = CreateFontA(48, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Arial");
+        ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Arial"
+    );
     
     ShowWindow(overlayWnd, SW_SHOW);
 }
@@ -181,19 +184,25 @@ void UpdateOverlay() {
     POINT pt = { 0, 0 };
     ClientToScreen(gameWnd, &pt);
     
-    SetWindowPos(overlayWnd, HWND_TOPMOST,
-        pt.x, pt.y, r.right, r.bottom,
-        SWP_NOACTIVATE);
+    SetWindowPos(
+        overlayWnd, 
+        HWND_TOPMOST,
+        pt.x, 
+        pt.y,
+        r.right, 
+        r.bottom,
+        SWP_NOACTIVATE
+    );
     
     InvalidateRect(overlayWnd, NULL, TRUE);
     UpdateWindow(overlayWnd);
 }
 
-// ============ MAIN THREAD ============
 DWORD WINAPI MainThread(LPVOID lpParam) {
     while (!(clientBase = GetModuleInfo(L"client.dll", &clientSize))) {
         Sleep(100);
     }
+
     Sleep(500);
     
     AllocConsole();
@@ -215,6 +224,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
         if (gameWnd) break;
         Sleep(100);
     }
+
     printf("Game window found!\n");
     
     CreateOverlay();
@@ -239,14 +249,14 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
         
         UpdateOverlay();
         
-        // HOME - hide/show console
+        // HOME - hide / show console
         if (GetAsyncKeyState(VK_HOME) & 1) {
             static bool consoleVisible = true;
             consoleVisible = !consoleVisible;
             ShowWindow(GetConsoleWindow(), consoleVisible ? SW_SHOW : SW_HIDE);
         }
         
-        // DELETE - hide/show overlay
+        // DELETE - hide / show overlay
         if (GetAsyncKeyState(VK_DELETE) & 1) {
             static bool overlayVisible = true;
             overlayVisible = !overlayVisible;
