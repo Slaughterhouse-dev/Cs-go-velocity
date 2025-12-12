@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <vector>
 
+// External Version
+
 namespace netvars {
     uintptr_t m_iHealth = 0x100;
     uintptr_t m_iTeamNum = 0xF4;
@@ -332,7 +334,7 @@ int main() {
     if (hFont) {
         DeleteObject(hFont);
     }
-    
+
     if (overlayWnd) {
         DestroyWindow(overlayWnd);
     }
