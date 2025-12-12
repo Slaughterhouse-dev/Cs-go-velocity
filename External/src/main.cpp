@@ -4,14 +4,12 @@
 #include <cstdio>
 #include <vector>
 
-// ============ NETVARS ============
 namespace netvars {
     uintptr_t m_iHealth = 0x100;
     uintptr_t m_iTeamNum = 0xF4;
     uintptr_t m_vecVelocity = 0x114;
 }
 
-// Глобальные
 HANDLE hProcess = NULL;
 HWND gameWnd = NULL;
 HWND overlayWnd = NULL;
@@ -27,7 +25,6 @@ bool isRunning = true;
 
 HFONT hFont = NULL;
 
-// ============ MEMORY ============
 DWORD GetProcessId(const wchar_t* processName) {
     DWORD pid = 0;
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -74,7 +71,6 @@ T Read(uintptr_t address) {
     return value;
 }
 
-// ============ PATTERN SCANNING ============
 uintptr_t PatternScan(const char* pattern) {
     std::vector<BYTE> bytes;
     std::vector<bool> mask;
@@ -129,7 +125,6 @@ uintptr_t FindLocalPlayer() {
     return (ptr - clientBase) + 4;
 }
 
-// ============ GAME ============
 uintptr_t GetLocalPlayer() {
     if (!dwLocalPlayer) return 0;
     return Read<uintptr_t>(clientBase + dwLocalPlayer);
@@ -145,7 +140,6 @@ float GetVelocity() {
     return speed;
 }
 
-// ============ OVERLAY ============
 LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_PAINT: {
@@ -198,17 +192,25 @@ void CreateOverlay() {
     
     overlayWnd = CreateWindowExA(
         WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST,
-        "VelocityOverlay", "Velocity Overlay",
+        "VelocityOverlay", 
+        "Velocity Overlay",
         WS_POPUP,
-        r.left, r.top, r.right - r.left, r.bottom - r.top,
-        NULL, NULL, GetModuleHandle(NULL), NULL
+        r.left, 
+        r.top, 
+        r.right - r.left, 
+        r.bottom - r.top,
+        NULL,
+        NULL, 
+        GetModuleHandle(NULL), 
+        NULL
     );
     
     SetLayeredWindowAttributes(overlayWnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
     
     hFont = CreateFontA(48, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Arial");
+        ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Arial"
+    );
     
     ShowWindow(overlayWnd, SW_SHOW);
 }
@@ -220,13 +222,16 @@ void UpdateOverlay() {
     GetWindowRect(gameWnd, &r);
     
     SetWindowPos(overlayWnd, HWND_TOPMOST,
-        r.left, r.top, r.right - r.left, r.bottom - r.top,
-        SWP_NOACTIVATE);
+        r.left, 
+        r.top, 
+        r.right - r.left, 
+        r.bottom - r.top,
+        SWP_NOACTIVATE
+    );
     
     InvalidateRect(overlayWnd, NULL, TRUE);
 }
 
-// ============ MAIN ============
 int main() {
     SetConsoleTitleA("Velocity External");
     printf("=== Velocity External ===\n\n");
@@ -281,7 +286,9 @@ int main() {
         currentSpeed = speed;
         
         if (speed > 10.0f) {
-            if (speed > maxSpeed) maxSpeed = speed;
+            if (speed > maxSpeed) {
+                maxSpeed = speed;
+            }
             wasMoving = true;
         } else {
             if (wasMoving && maxSpeed > 0) {
@@ -295,14 +302,14 @@ int main() {
         if (!gameWnd) gameWnd = FindWindowA(NULL, "Counter-Strike: Global Offensive");
         UpdateOverlay();
         
-        // HOME - hide/show console
+        // HOME - hide / show console
         if (GetAsyncKeyState(VK_HOME) & 1) {
             static bool consoleVisible = true;
             consoleVisible = !consoleVisible;
             ShowWindow(GetConsoleWindow(), consoleVisible ? SW_SHOW : SW_HIDE);
         }
         
-        // DELETE - hide/show overlay
+        // DELETE - hide / show overlay
         if (GetAsyncKeyState(VK_DELETE) & 1) {
             static bool overlayVisible = true;
             overlayVisible = !overlayVisible;
@@ -322,8 +329,13 @@ int main() {
         Sleep(16);
     }
     
-    if (hFont) DeleteObject(hFont);
-    if (overlayWnd) DestroyWindow(overlayWnd);
+    if (hFont) {
+        DeleteObject(hFont);
+    }
+    
+    if (overlayWnd) {
+        DestroyWindow(overlayWnd);
+    }
     CloseHandle(hProcess);
     
     return 0;
