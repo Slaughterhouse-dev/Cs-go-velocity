@@ -1,35 +1,84 @@
 # Velocity - CS:GO Speed Overlay
 
-External overlay для отображения скорости игрока в CS:GO в реальном времени.
+Отображение скорости игрока в CS:GO в реальном времени.
 
-![Velocity Overlay](https://private-user-images.githubusercontent.com/168532046/524657583-6b1b5c9b-9373-4db8-9b75-bbc11156e884.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NjUzNjE3MzEsIm5iZiI6MTc2NTM2MTQzMSwicGF0aCI6Ii8xNjg1MzIwNDYvNTI0NjU3NTgzLTZiMWI1YzliLTkzNzMtNGRiOC05Yjc1LWJiYzExMTU2ZTg4NC5wbmc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjUxMjEwJTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI1MTIxMFQxMDEwMzFaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT1iMzAzMWZhMWViYWFhNjNmMDYyZTE1MTcxZDU3NjM4NjJlMjNhNmQ5NjlmNDM2NmFmNzZhNDA4OWYyM2ZkZmY5JlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCJ9.wHrsmmBZfn4yKhUHOWoAgd8bLahmOWkdkc-ZfgbzXeY)
+![Velocity Overlay](./images/Velocity.png)
 
 ## Функции
+
 - Overlay поверх игры с текущей скоростью
 - Формат: `скорость (последняя)` — например `247 (240)`
-- Цвет меняется в зависимости от скорости
+- Pattern scanning — не нужно обновлять оффсеты вручную
+- Две версии: External (EXE) и Internal (DLL)
 
-## Сборка
+## Версии
 
-Открой `Velocity/Velocity.sln` в Visual Studio и собери проект (Release x86).
+### External (рекомендуется)
+Отдельная программа, читает память игры извне.
 
-Или через командную строку:
+**Плюсы:**
+- Не требует инжектор
+- Безопаснее
+- Легко обновлять
+
+**Сборка:**
 ```sh
-cd Velocity
-msbuild Velocity.sln /p:Configuration=Release /p:Platform=x86
+cd External
+msbuild External.sln /p:Configuration=Release /p:Platform=x86
 ```
 
-## Использование
-
+**Использование:**
 1. Запусти CS:GO
-2. Запусти `Velocity.exe` от имени администратора
-3. Зайди на карту
-4. ESC для выхода
+2. Запусти `External.exe` от администратора
+3. Готово!
 
-## Оффсеты
+### Internal
+DLL для инжекта в процесс игры.
 
-Оффсеты в папке `Offsets/` — нужно обновлять под актуальную версию игры.
-Свежие оффсеты: [hazedumper](https://github.com/frk1/hazedumper)
+**Плюсы:**
+- Работает изнутри процесса
+
+**Сборка:**
+```sh
+cd Internal
+msbuild Internal.sln /p:Configuration=Release /p:Platform=x86
+```
+
+**Использование:**
+1. Запусти CS:GO
+2. Инжектни `Internal.dll` любым инжектором (Standard/LoadLibrary)
+3. Готово!
+
+## Управление
+
+| Клавиша | Действие |
+|---------|----------|
+| HOME | Скрыть/показать консоль |
+| DELETE | Скрыть/показать overlay |
+| END | Выход (только External) |
+
+## Структура проекта
+
+```
+├── External/          # External версия (EXE)
+│   ├── src/
+│   │   └── main.cpp
+│   ├── External.sln
+│   └── External.vcxproj
+├── Internal/          # Internal версия (DLL)
+│   ├── src/
+│   │   └── main.cpp
+│   ├── Internal.sln
+│   └── Internal.vcxproj
+├── Offsets/           # Оффсеты hazedumper (для справки)
+└── images/            # Скриншоты
+```
+
+## Требования
+
+- Visual Studio 2022
+- Windows SDK 10.0
+- CS:GO (не CS2!)
 
 ## Лицензия
 

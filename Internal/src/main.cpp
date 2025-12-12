@@ -22,7 +22,6 @@ float currentSpeed = 0.0f;
 float lastSpeed = 0.0f;
 float maxSpeed = 0.0f;
 bool wasMoving = false;
-bool shouldExit = false;
 
 HWND gameWnd = NULL;
 HWND overlayWnd = NULL;
@@ -129,11 +128,9 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         int x = (rc.right - sz.cx) / 2;
         int y = rc.bottom / 2 + 100;
         
-        // Тень
         SetTextColor(hdc, RGB(0, 60, 0));
         TextOutA(hdc, x + 2, y + 2, text, (int)strlen(text));
         
-        // Текст
         SetTextColor(hdc, RGB(0, 255, 0));
         TextOutA(hdc, x, y, text, (int)strlen(text));
         
@@ -194,13 +191,11 @@ void UpdateOverlay() {
 
 // ============ MAIN THREAD ============
 DWORD WINAPI MainThread(LPVOID lpParam) {
-    // Ждём client.dll
     while (!(clientBase = GetModuleInfo(L"client.dll", &clientSize))) {
         Sleep(100);
     }
     Sleep(500);
     
-    // Консоль
     AllocConsole();
     FILE* f;
     freopen_s(&f, "CONOUT$", "w", stdout);
@@ -208,7 +203,6 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     printf("=== Velocity Internal ===\n");
     printf("client.dll: 0x%IX\n", clientBase);
     
-    // Pattern scan
     dwLocalPlayer = FindLocalPlayer();
     if (dwLocalPlayer) {
         printf("dwLocalPlayer: 0x%X\n", (unsigned)dwLocalPlayer);
@@ -216,7 +210,6 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
         printf("Pattern not found!\n");
     }
     
-    // Ждём окно игры
     while (!(gameWnd = FindWindowA(NULL, "Counter-Strike: Global Offensive - Direct3D 9"))) {
         gameWnd = FindWindowA(NULL, "Counter-Strike: Global Offensive");
         if (gameWnd) break;
@@ -224,15 +217,12 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     }
     printf("Game window found!\n");
     
-    // Создаём overlay
     CreateOverlay();
     printf("Overlay created!\n");
     printf("\nHOME = hide/show console\n");
     printf("DELETE = hide/show overlay\n");
     
-    // Главный цикл (бесконечный)
     while (true) {
-        // Обновляем скорость
         float speed = GetVelocity();
         currentSpeed = speed;
         
@@ -247,24 +237,22 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
             wasMoving = false;
         }
         
-        // Обновляем overlay
         UpdateOverlay();
         
-        // HOME для скрытия/показа консоли
+        // HOME - hide/show console
         if (GetAsyncKeyState(VK_HOME) & 1) {
             static bool consoleVisible = true;
             consoleVisible = !consoleVisible;
             ShowWindow(GetConsoleWindow(), consoleVisible ? SW_SHOW : SW_HIDE);
         }
         
-        // DELETE для скрытия/показа overlay
+        // DELETE - hide/show overlay
         if (GetAsyncKeyState(VK_DELETE) & 1) {
             static bool overlayVisible = true;
             overlayVisible = !overlayVisible;
             ShowWindow(overlayWnd, overlayVisible ? SW_SHOW : SW_HIDE);
         }
         
-        // Сообщения
         MSG msg;
         while (PeekMessage(&msg, overlayWnd, 0, 0, PM_REMOVE)) {
             TranslateMessage(&msg);
@@ -274,16 +262,6 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
         Sleep(16);
     }
     
-    // Cleanup
-    printf("Unloading...\n");
-    
-    if (overlayWnd) DestroyWindow(overlayWnd);
-    if (hFont) DeleteObject(hFont);
-    
-    Sleep(100);
-    if (f) fclose(f);
-    FreeConsole();
-    FreeLibraryAndExitThread((HMODULE)lpParam, 0);
     return 0;
 }
 
