@@ -1,11 +1,5 @@
 # Visual Studio
 .vs/
-.vs/External
-.vs/Internal
-# Debug/
-# Release/
-# x86/
-# x64/
 *.user
 *.suo
 *.ncb
@@ -15,14 +9,26 @@
 *.VC.opendb
 ipch/
 
+# Build folders (внутри проектов)
+External/Release/
+External/Debug/
+External/x86/
+External/x64/
+Internal/Release/
+Internal/Debug/
+Internal/x86/
+Internal/x64/
+
 # Build output
-# .exe
 *.obj
 *.pdb
 *.ilk
 *.iobj
 *.ipdb
 *.log
+*.tlog
+*.recipe
+*.lastbuildstate
 
 # Node modules
 /node_modules/
