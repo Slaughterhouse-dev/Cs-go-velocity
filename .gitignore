@@ -1,5 +1,7 @@
 # Visual Studio
 .vs/
+.vs/External
+.vs/Internal
 # Debug/
 # Release/
 # x86/
