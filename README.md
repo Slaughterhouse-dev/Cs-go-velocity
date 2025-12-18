@@ -4,7 +4,7 @@
 
 | Velocity | Move | Resize |
 |:--------:|:----:|:------:|
-| <img src="./images/Velocity.png" width="250"> | <img src="./images/Move.png" width="250"> | <img src="./images/Resize.png" width="250"> |
+| <img src="./images/Velocity.png" width="325"> | <img src="./images/Move.png" width="325"> | <img src="./images/Resize.png" width="325"> |
 
 
 ## Примечание
