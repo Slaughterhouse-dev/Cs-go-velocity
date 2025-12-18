@@ -2,9 +2,9 @@
 
 Отображение скорости игрока в CS:GO в реальном времени.
 
-![Velocity Overlay](./images/Velocity.png)
-![Velocity Overlay](./images/Move.png)
-![Velocity Overlay](./images/Resize.png)
+| Velocity | Move | Resize |
+|:--------:|:----:|:------:|
+| <img src="./images/Velocity.png" width="200"> | <img src="./images/Move.png" width="200"> | <img src="./images/Resize.png" width="200"> |
 
 
 ## Примечание
