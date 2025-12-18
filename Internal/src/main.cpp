@@ -1,10 +1,12 @@
 #include <Windows.h>
+#include <dwmapi.h>
 #include <cmath>
 #include <cstdio>
 #include <Psapi.h>
 #include <vector>
 
 #pragma comment(lib, "psapi.lib")
+#pragma comment(lib, "dwmapi.lib")
 
 // Internal Version
 
@@ -27,6 +29,23 @@ HWND gameWnd = NULL;
 HWND overlayWnd = NULL;
 HFONT hFont = NULL;
 HMODULE hModule = NULL;
+
+// Text position relative to game window (0.0 - 1.0)
+float textPosX = 0.5f;  // center
+float textPosY = 0.65f; // below center
+int textWidth = 200;
+int textHeight = 60;
+int fontSize = 48;
+
+// Edit mode: 0=off, 1=move, 2=resize
+int editMode = 0;
+bool isDragging = false;
+bool isResizing = false;
+POINT dragStart = { 0, 0 };
+float dragStartPosX = 0;
+float dragStartPosY = 0;
+int dragStartW = 0;
+int dragStartH = 0;
 
 uintptr_t GetModuleInfo(const wchar_t* moduleName, uintptr_t* size) {
     HMODULE hMod = GetModuleHandleW(moduleName);
@@ -104,14 +123,51 @@ float GetVelocity() {
     return speed;
 }
 
+// Get text box rect in screen coordinates
+RECT GetTextRect(RECT* gameRect) {
+    int centerX = (int)(gameRect->right * textPosX);
+    int centerY = (int)(gameRect->bottom * textPosY);
+    
+    RECT r;
+    r.left = centerX - textWidth / 2;
+    r.top = centerY - textHeight / 2;
+    r.right = r.left + textWidth;
+    r.bottom = r.top + textHeight;
+    return r;
+}
+
+bool IsInTextArea(int x, int y, RECT* gameRect) {
+    RECT tr = GetTextRect(gameRect);
+    // Add padding for easier clicking
+    int pad = 10;
+    return x >= tr.left - pad && x <= tr.right + pad && y >= tr.top - pad && y <= tr.bottom + pad;
+}
+
+bool IsInResizeCorner(int x, int y, RECT* gameRect) {
+    RECT tr = GetTextRect(gameRect);
+    return x >= tr.right - 15 && y >= tr.bottom - 15 && x <= tr.right && y <= tr.bottom;
+}
+
 LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_PAINT: {
             PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hwnd, &ps);
+            HDC hdcScreen = BeginPaint(hwnd, &ps);
         
             RECT rc;
             GetClientRect(hwnd, &rc);
+            
+            // Double buffering to prevent flickering
+            HDC hdc = CreateCompatibleDC(hdcScreen);
+            HBITMAP hBitmap = CreateCompatibleBitmap(hdcScreen, rc.right, rc.bottom);
+            HBITMAP hOldBitmap = (HBITMAP)SelectObject(hdc, hBitmap);
+            
+            // Fill with transparent color (black = colorkey)
+            HBRUSH bgBrush = CreateSolidBrush(RGB(0, 0, 0));
+            FillRect(hdc, &rc, bgBrush);
+            DeleteObject(bgBrush);
+            
+            RECT textRect = GetTextRect(&rc);
         
             SetBkMode(hdc, TRANSPARENT);
             SelectObject(hdc, hFont);
@@ -121,17 +177,179 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         
             SIZE sz;
             GetTextExtentPoint32A(hdc, text, (int)strlen(text), &sz);
-            int x = (rc.right - sz.cx) / 2;
-            int y = rc.bottom / 2 + 100;
+            int x = textRect.left + (textWidth - sz.cx) / 2;
+            int y = textRect.top + (textHeight - sz.cy) / 2;
         
+            // Draw edit mode box first (background)
+            if (editMode > 0) {
+                COLORREF borderColor = (editMode == 1) ? RGB(255, 180, 50) : RGB(50, 180, 255);
+                
+                // Dark background
+                HBRUSH fillBrush = CreateSolidBrush(RGB(15, 18, 25));
+                FillRect(hdc, &textRect, fillBrush);
+                DeleteObject(fillBrush);
+            }
+            
+            // Clip text to textRect in edit mode
+            if (editMode > 0) {
+                HRGN clipRgn = CreateRectRgn(textRect.left, textRect.top, textRect.right, textRect.bottom);
+                SelectClipRgn(hdc, clipRgn);
+                DeleteObject(clipRgn);
+            }
+            
+            // Shadow
             SetTextColor(hdc, RGB(0, 60, 0));
             TextOutA(hdc, x + 2, y + 2, text, (int)strlen(text));
         
+            // Main text
             SetTextColor(hdc, RGB(0, 255, 0));
             TextOutA(hdc, x, y, text, (int)strlen(text));
+            
+            // Remove clipping
+            if (editMode > 0) {
+                SelectClipRgn(hdc, NULL);
+            }
+            
+            // Draw edit mode border and UI
+            if (editMode > 0) {
+                COLORREF borderColor = (editMode == 1) ? RGB(255, 180, 50) : RGB(50, 180, 255);
+                
+                // Thin border
+                HPEN pen = CreatePen(PS_SOLID, 1, borderColor);
+                HPEN oldPen = (HPEN)SelectObject(hdc, pen);
+                HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+                Rectangle(hdc, textRect.left, textRect.top, textRect.right, textRect.bottom);
+                SelectObject(hdc, oldPen);
+                SelectObject(hdc, oldBrush);
+                DeleteObject(pen);
+                
+                // Resize grip (3 dots in corner)
+                if (editMode == 2) {
+                    HBRUSH dotBrush = CreateSolidBrush(borderColor);
+                    RECT d1 = { textRect.right - 5, textRect.bottom - 5, textRect.right - 2, textRect.bottom - 2 };
+                    RECT d2 = { textRect.right - 9, textRect.bottom - 5, textRect.right - 6, textRect.bottom - 2 };
+                    RECT d3 = { textRect.right - 5, textRect.bottom - 9, textRect.right - 2, textRect.bottom - 6 };
+                    FillRect(hdc, &d1, dotBrush);
+                    FillRect(hdc, &d2, dotBrush);
+                    FillRect(hdc, &d3, dotBrush);
+                    DeleteObject(dotBrush);
+                }
+                
+                // Mode label
+                HFONT labelFont = CreateFontA(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                    DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                    ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
+                HFONT oldFont = (HFONT)SelectObject(hdc, labelFont);
+                const char* modeText = (editMode == 1) ? "Move" : "Resize";
+                SetTextColor(hdc, borderColor);
+                TextOutA(hdc, textRect.left, textRect.top - 18, modeText, (int)strlen(modeText));
+                SelectObject(hdc, oldFont);
+                DeleteObject(labelFont);
+            }
+            
+            // Copy buffer to screen
+            BitBlt(hdcScreen, 0, 0, rc.right, rc.bottom, hdc, 0, 0, SRCCOPY);
+            
+            // Cleanup
+            SelectObject(hdc, hOldBitmap);
+            DeleteObject(hBitmap);
+            DeleteDC(hdc);
         
             EndPaint(hwnd, &ps);
             return 0;
+        }
+        
+        case WM_ERASEBKGND: {
+            return 1; // Prevent background erase (reduces flicker)
+        }
+        
+        case WM_LBUTTONDOWN: {
+            if (editMode == 0) break;
+            
+            RECT rc;
+            GetClientRect(hwnd, &rc);
+            int mx = LOWORD(lParam);
+            int my = HIWORD(lParam);
+            
+            // Only start drag if clicking inside the box
+            if (!IsInTextArea(mx, my, &rc)) break;
+            
+            GetCursorPos(&dragStart);
+            
+            if (editMode == 1) {
+                // Move mode
+                isDragging = true;
+                dragStartPosX = textPosX;
+                dragStartPosY = textPosY;
+            } else if (editMode == 2) {
+                // Resize mode
+                isResizing = true;
+                dragStartW = textWidth;
+                dragStartH = textHeight;
+            }
+            SetCapture(hwnd);
+            return 0;
+        }
+        
+        case WM_MOUSEMOVE: {
+            if (editMode == 0) break;
+            
+            RECT rc;
+            GetClientRect(hwnd, &rc);
+            
+            if (isDragging && editMode == 1) {
+                POINT pt;
+                GetCursorPos(&pt);
+                int dx = pt.x - dragStart.x;
+                int dy = pt.y - dragStart.y;
+                
+                textPosX = dragStartPosX + (float)dx / rc.right;
+                textPosY = dragStartPosY + (float)dy / rc.bottom;
+                
+                // Clamp
+                if (textPosX < 0.1f) textPosX = 0.1f;
+                if (textPosX > 0.9f) textPosX = 0.9f;
+                if (textPosY < 0.1f) textPosY = 0.1f;
+                if (textPosY > 0.9f) textPosY = 0.9f;
+                
+                InvalidateRect(hwnd, NULL, TRUE);
+            }
+            
+            if (isResizing && editMode == 2) {
+                POINT pt;
+                GetCursorPos(&pt);
+                int dx = pt.x - dragStart.x;
+                int dy = pt.y - dragStart.y;
+                
+                textWidth = dragStartW + dx;
+                textHeight = dragStartH + dy;
+                
+                if (textWidth < 100) textWidth = 100;
+                if (textHeight < 40) textHeight = 40;
+                if (textWidth > 500) textWidth = 500;
+                if (textHeight > 200) textHeight = 200;
+                
+                // Update font
+                fontSize = max(16, textHeight - 12);
+                if (hFont) DeleteObject(hFont);
+                hFont = CreateFontA(fontSize, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                    DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                    ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Arial");
+                
+                InvalidateRect(hwnd, NULL, TRUE);
+            }
+            return 0;
+        }
+        
+        case WM_LBUTTONUP: {
+            isDragging = false;
+            isResizing = false;
+            ReleaseCapture();
+            return 0;
+        }
+        
+        case WM_MOUSEACTIVATE: {
+            return MA_NOACTIVATE;
         }
     }
     return DefWindowProcA(hwnd, msg, wParam, lParam);
@@ -153,7 +371,7 @@ void CreateOverlay() {
     ClientToScreen(gameWnd, &pt);
     
     overlayWnd = CreateWindowExA(
-        WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+        WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
         "VelocityInternal", 
         NULL,
         WS_POPUP,
@@ -168,7 +386,7 @@ void CreateOverlay() {
     
     SetLayeredWindowAttributes(overlayWnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
     
-    hFont = CreateFontA(48, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+    hFont = CreateFontA(fontSize, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Arial"
     );
@@ -184,18 +402,33 @@ void UpdateOverlay() {
     POINT pt = { 0, 0 };
     ClientToScreen(gameWnd, &pt);
     
-    SetWindowPos(
-        overlayWnd, 
-        HWND_TOPMOST,
-        pt.x, 
-        pt.y,
-        r.right, 
-        r.bottom,
-        SWP_NOACTIVATE
-    );
+    SetWindowPos(overlayWnd, HWND_TOPMOST,
+        pt.x, pt.y, r.right, r.bottom,
+        SWP_NOACTIVATE);
     
     InvalidateRect(overlayWnd, NULL, TRUE);
     UpdateWindow(overlayWnd);
+}
+
+void SetEditMode(int mode) {
+    // Release any capture first
+    if (isDragging || isResizing) {
+        isDragging = false;
+        isResizing = false;
+        ReleaseCapture();
+    }
+    
+    editMode = mode;
+    
+    LONG style = GetWindowLong(overlayWnd, GWL_EXSTYLE);
+    if (mode > 0) {
+        style &= ~WS_EX_TRANSPARENT;
+    } else {
+        style |= WS_EX_TRANSPARENT;
+    }
+    SetWindowLong(overlayWnd, GWL_EXSTYLE, style);
+    
+    InvalidateRect(overlayWnd, NULL, TRUE);
 }
 
 DWORD WINAPI MainThread(LPVOID lpParam) {
@@ -231,6 +464,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     printf("Overlay created!\n");
     printf("\nHOME = hide/show console\n");
     printf("DELETE = hide/show overlay\n");
+    printf("INSERT = edit mode (move/resize)\n");
     
     while (true) {
         float speed = GetVelocity();
@@ -249,18 +483,24 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
         
         UpdateOverlay();
         
-        // HOME - hide / show console
         if (GetAsyncKeyState(VK_HOME) & 1) {
             static bool consoleVisible = true;
             consoleVisible = !consoleVisible;
             ShowWindow(GetConsoleWindow(), consoleVisible ? SW_SHOW : SW_HIDE);
         }
         
-        // DELETE - hide / show overlay
         if (GetAsyncKeyState(VK_DELETE) & 1) {
             static bool overlayVisible = true;
             overlayVisible = !overlayVisible;
             ShowWindow(overlayWnd, overlayVisible ? SW_SHOW : SW_HIDE);
+        }
+        
+        // INSERT - cycle edit mode: OFF -> MOVE -> RESIZE -> OFF
+        if (GetAsyncKeyState(VK_INSERT) & 1) {
+            int newMode = (editMode + 1) % 3;
+            SetEditMode(newMode);
+            const char* modeNames[] = { "OFF", "MOVE", "RESIZE" };
+            printf("Edit mode: %s\n", modeNames[editMode]);
         }
         
         MSG msg;
