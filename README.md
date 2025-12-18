@@ -3,6 +3,9 @@
 Отображение скорости игрока в CS:GO в реальном времени.
 
 ![Velocity Overlay](./images/Velocity.png)
+![Velocity Overlay](./images/Move.png)
+![Velocity Overlay](./images/Resize.png)
+
 
 ## Примечание
 - Также если вы хотите запустить его без Visual Studio 2022, ибо некоторые люди не используют его и не знаю что это
