@@ -518,8 +518,8 @@ int main() {
             ShowWindow(overlayWnd, overlayVisible ? SW_SHOW : SW_HIDE);
         }
         
-        // INSERT - cycle edit mode
-        if (GetAsyncKeyState(VK_INSERT) & 1) {
+        // End - cycle edit mode
+        if (GetAsyncKeyState(VK_END) & 1) {
             int newMode = (editMode + 1) % 3;
             SetEditMode(newMode);
             const char* modeNames[] = { "OFF", "MOVE", "RESIZE" };
@@ -527,7 +527,7 @@ int main() {
         }
         
         // END - exit
-        if (GetAsyncKeyState(VK_END) & 1) {
+        if ((GetAsyncKeyState(VK_END) & 0x8000) && (GetAsyncKeyState(VK_DELETE) & 1)) {
             isRunning = false;
         }
         

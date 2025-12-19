@@ -247,6 +247,36 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 DeleteObject(labelFont);
             }
             
+            
+            // Draw custom cursor in edit mode (game hides Windows cursor)
+            if (editMode > 0) {
+                POINT cursorPos;
+                GetCursorPos(&cursorPos);
+                ScreenToClient(hwnd, &cursorPos);
+                
+                // Arrow cursor shape
+                POINT arrow[7] = {
+                    { cursorPos.x, cursorPos.y },
+                    { cursorPos.x, cursorPos.y + 16 },
+                    { cursorPos.x + 4, cursorPos.y + 12 },
+                    { cursorPos.x + 7, cursorPos.y + 18 },
+                    { cursorPos.x + 9, cursorPos.y + 17 },
+                    { cursorPos.x + 6, cursorPos.y + 11 },
+                    { cursorPos.x + 10, cursorPos.y + 11 }
+                };
+                
+                // White fill
+                HBRUSH cursorBrush = CreateSolidBrush(RGB(255, 255, 255));
+                HPEN cursorPen = CreatePen(PS_SOLID, 1, RGB(0, 0, 0));
+                HBRUSH oldBr = (HBRUSH)SelectObject(hdc, cursorBrush);
+                HPEN oldPn = (HPEN)SelectObject(hdc, cursorPen);
+                Polygon(hdc, arrow, 7);
+                SelectObject(hdc, oldBr);
+                SelectObject(hdc, oldPn);
+                DeleteObject(cursorBrush);
+                DeleteObject(cursorPen);
+            }
+            
             // Copy buffer to screen
             BitBlt(hdcScreen, 0, 0, rc.right, rc.bottom, hdc, 0, 0, SRCCOPY);
             
@@ -349,7 +379,16 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         }
         
         case WM_MOUSEACTIVATE: {
+            // Never activate - don't steal focus from game
             return MA_NOACTIVATE;
+        }
+        
+        case WM_SETCURSOR: {
+            if (editMode > 0) {
+                SetCursor(LoadCursor(NULL, IDC_ARROW));
+                return TRUE;
+            }
+            break;
         }
     }
     return DefWindowProcA(hwnd, msg, wParam, lParam);
@@ -410,6 +449,8 @@ void UpdateOverlay() {
     UpdateWindow(overlayWnd);
 }
 
+
+
 void SetEditMode(int mode) {
     // Release any capture first
     if (isDragging || isResizing) {
@@ -422,11 +463,17 @@ void SetEditMode(int mode) {
     
     LONG style = GetWindowLong(overlayWnd, GWL_EXSTYLE);
     if (mode > 0) {
+        // Remove transparent flag so overlay receives mouse input
         style &= ~WS_EX_TRANSPARENT;
+        SetWindowLong(overlayWnd, GWL_EXSTYLE, style);
+        
+        // Unlock cursor
+        ClipCursor(NULL);
     } else {
+        // Restore transparent flag
         style |= WS_EX_TRANSPARENT;
+        SetWindowLong(overlayWnd, GWL_EXSTYLE, style);
     }
-    SetWindowLong(overlayWnd, GWL_EXSTYLE, style);
     
     InvalidateRect(overlayWnd, NULL, TRUE);
 }
@@ -464,7 +511,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     printf("Overlay created!\n");
     printf("\nHOME = hide/show console\n");
     printf("DELETE = hide/show overlay\n");
-    printf("INSERT = edit mode (move/resize)\n");
+    printf("END = edit mode (move/resize)\n");
     
     while (true) {
         float speed = GetVelocity();
@@ -483,6 +530,13 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
         
         UpdateOverlay();
         
+        // Keep cursor visible and unlocked in edit mode
+        if (editMode > 0) {
+            ClipCursor(NULL);
+            // Force redraw for cursor animation
+            InvalidateRect(overlayWnd, NULL, FALSE);
+        }
+        
         if (GetAsyncKeyState(VK_HOME) & 1) {
             static bool consoleVisible = true;
             consoleVisible = !consoleVisible;
@@ -495,8 +549,8 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
             ShowWindow(overlayWnd, overlayVisible ? SW_SHOW : SW_HIDE);
         }
         
-        // INSERT - cycle edit mode: OFF -> MOVE -> RESIZE -> OFF
-        if (GetAsyncKeyState(VK_INSERT) & 1) {
+        // End - cycle edit mode: OFF -> MOVE -> RESIZE -> OFF
+        if (GetAsyncKeyState(VK_END) & 1) {
             int newMode = (editMode + 1) % 3;
             SetEditMode(newMode);
             const char* modeNames[] = { "OFF", "MOVE", "RESIZE" };
@@ -509,7 +563,8 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
             DispatchMessage(&msg);
         }
         
-        Sleep(16);
+        // Faster updates in edit mode for smooth cursor
+        Sleep(editMode > 0 ? 8 : 16);
     }
     
     return 0;
