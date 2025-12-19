@@ -4,8 +4,6 @@
 #include <cstdio>
 #include <vector>
 
-// External Version
-
 namespace netvars {
     uintptr_t m_iHealth = 0x100;
     uintptr_t m_iTeamNum = 0xF4;
@@ -27,7 +25,6 @@ bool isRunning = true;
 
 HFONT hFont = NULL;
 
-// Text position relative to game window (0.0 - 1.0)
 float textPosX = 0.5f;
 float textPosY = 0.65f;
 int textWidth = 200;
@@ -185,12 +182,10 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         RECT rc;
         GetClientRect(hwnd, &rc);
         
-        // Double buffering
         HDC hdc = CreateCompatibleDC(hdcScreen);
         HBITMAP hBitmap = CreateCompatibleBitmap(hdcScreen, rc.right, rc.bottom);
         HBITMAP hOldBitmap = (HBITMAP)SelectObject(hdc, hBitmap);
         
-        // Fill with black (transparent)
         HBRUSH bgBrush = CreateSolidBrush(RGB(0, 0, 0));
         FillRect(hdc, &rc, bgBrush);
         DeleteObject(bgBrush);
@@ -208,38 +203,31 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         int x = textRect.left + (textWidth - sz.cx) / 2;
         int y = textRect.top + (textHeight - sz.cy) / 2;
         
-        // Draw edit mode background first
         if (editMode > 0) {
             HBRUSH fillBrush = CreateSolidBrush(RGB(15, 18, 25));
             FillRect(hdc, &textRect, fillBrush);
             DeleteObject(fillBrush);
         }
         
-        // Clip text in edit mode
         if (editMode > 0) {
             HRGN clipRgn = CreateRectRgn(textRect.left, textRect.top, textRect.right, textRect.bottom);
             SelectClipRgn(hdc, clipRgn);
             DeleteObject(clipRgn);
         }
         
-        // Shadow
         SetTextColor(hdc, RGB(0, 60, 0));
         TextOutA(hdc, x + 2, y + 2, text, (int)strlen(text));
         
-        // Main text
         SetTextColor(hdc, RGB(0, 255, 0));
         TextOutA(hdc, x, y, text, (int)strlen(text));
         
-        // Remove clipping
         if (editMode > 0) {
             SelectClipRgn(hdc, NULL);
         }
         
-        // Draw edit mode UI
         if (editMode > 0) {
             COLORREF borderColor = (editMode == 1) ? RGB(255, 180, 50) : RGB(50, 180, 255);
             
-            // Border
             HPEN pen = CreatePen(PS_SOLID, 1, borderColor);
             HPEN oldPen = (HPEN)SelectObject(hdc, pen);
             HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
@@ -248,7 +236,6 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             SelectObject(hdc, oldBrush);
             DeleteObject(pen);
             
-            // Resize grip
             if (editMode == 2) {
                 HBRUSH dotBrush = CreateSolidBrush(borderColor);
                 RECT d1 = { textRect.right - 5, textRect.bottom - 5, textRect.right - 2, textRect.bottom - 2 };
@@ -260,7 +247,6 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 DeleteObject(dotBrush);
             }
             
-            // Mode label
             HFONT labelFont = CreateFontA(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
@@ -272,7 +258,6 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             DeleteObject(labelFont);
         }
         
-        // Copy to screen
         BitBlt(hdcScreen, 0, 0, rc.right, rc.bottom, hdc, 0, 0, SRCCOPY);
         
         SelectObject(hdc, hOldBitmap);
@@ -504,21 +489,18 @@ int main() {
         if (!gameWnd) gameWnd = FindWindowA(NULL, "Counter-Strike: Global Offensive");
         UpdateOverlay();
         
-        // HOME - hide/show console
         if (GetAsyncKeyState(VK_HOME) & 1) {
             static bool consoleVisible = true;
             consoleVisible = !consoleVisible;
             ShowWindow(GetConsoleWindow(), consoleVisible ? SW_SHOW : SW_HIDE);
         }
         
-        // DELETE - hide/show overlay
         if (GetAsyncKeyState(VK_DELETE) & 1) {
             static bool overlayVisible = true;
             overlayVisible = !overlayVisible;
             ShowWindow(overlayWnd, overlayVisible ? SW_SHOW : SW_HIDE);
         }
         
-        // End - cycle edit mode
         if (GetAsyncKeyState(VK_END) & 1) {
             int newMode = (editMode + 1) % 3;
             SetEditMode(newMode);
@@ -526,7 +508,6 @@ int main() {
             printf("Edit mode: %s\n", modeNames[editMode]);
         }
         
-        // END - exit
         if ((GetAsyncKeyState(VK_END) & 0x8000) && (GetAsyncKeyState(VK_DELETE) & 1)) {
             isRunning = false;
         }

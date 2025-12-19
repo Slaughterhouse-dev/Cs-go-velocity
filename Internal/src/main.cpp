@@ -12,8 +12,6 @@
 #pragma comment(lib, "d3d9.lib")
 #pragma comment(lib, "libMinHook.x86.lib")
 
-// Internal Version
-
 namespace netvars {
     uintptr_t m_vecVelocity = 0x114;
 }
@@ -32,7 +30,6 @@ HWND overlayWnd = NULL;
 HFONT hFont = NULL;
 HMODULE hModule = NULL;
 
-// Text position relative to game window (0.0 - 1.0)
 float textPosX = 0.5f;
 float textPosY = 0.65f;
 int textWidth = 200;
@@ -49,9 +46,6 @@ float dragStartPosY = 0;
 int dragStartW = 0;
 int dragStartH = 0;
 
-// ============== MINHOOK MOUSE UNLOCK ==============
-
-// Original function pointers
 typedef BOOL(WINAPI* SetCursorPos_t)(int X, int Y);
 typedef BOOL(WINAPI* ClipCursor_t)(const RECT* lpRect);
 typedef int(WINAPI* ShowCursor_t)(BOOL bShow);
@@ -62,42 +56,35 @@ ClipCursor_t oClipCursor = nullptr;
 ShowCursor_t oShowCursor = nullptr;
 GetRawInputData_t oGetRawInputData = nullptr;
 
-// Hooked SetCursorPos - blocks game from centering cursor
 BOOL WINAPI hkSetCursorPos(int X, int Y) {
     if (editMode > 0) {
-        return TRUE; // Block - don't let game move cursor
+        return TRUE;
     }
     return oSetCursorPos(X, Y);
 }
 
-// Hooked ClipCursor - blocks game from locking cursor to window
 BOOL WINAPI hkClipCursor(const RECT* lpRect) {
     if (editMode > 0) {
-        return oClipCursor(NULL); // Remove any cursor constraints
+        return oClipCursor(NULL);
     }
     return oClipCursor(lpRect);
 }
 
-// Hooked ShowCursor - keeps cursor visible in edit mode
 int WINAPI hkShowCursor(BOOL bShow) {
     if (editMode > 0) {
-        return oShowCursor(TRUE); // Always show cursor
+        return oShowCursor(TRUE);
     }
     return oShowCursor(bShow);
 }
 
-// Hooked GetRawInputData - blocks mouse/keyboard raw input to game
 UINT WINAPI hkGetRawInputData(HRAWINPUT hRawInput, UINT uiCommand, LPVOID pData, PUINT pcbSize, UINT cbSizeHeader) {
     if (editMode > 0 && pData != nullptr) {
-        // Get the data first
         UINT result = oGetRawInputData(hRawInput, uiCommand, pData, pcbSize, cbSizeHeader);
         if (result != (UINT)-1 && result > 0) {
             RAWINPUT* raw = (RAWINPUT*)pData;
-            // Block mouse input
             if (raw->header.dwType == RIM_TYPEMOUSE) {
                 ZeroMemory(&raw->data.mouse, sizeof(raw->data.mouse));
             }
-            // Block keyboard input (except END key to exit edit mode)
             if (raw->header.dwType == RIM_TYPEKEYBOARD) {
                 if (raw->data.keyboard.VKey != VK_END && 
                     raw->data.keyboard.VKey != VK_HOME &&
@@ -111,20 +98,17 @@ UINT WINAPI hkGetRawInputData(HRAWINPUT hRawInput, UINT uiCommand, LPVOID pData,
     return oGetRawInputData(hRawInput, uiCommand, pData, pcbSize, cbSizeHeader);
 }
 
-// ============== D3D9 HOOK FOR CURSOR ==============
-
 typedef BOOL(WINAPI* D3D9ShowCursor_t)(IDirect3DDevice9* pDevice, BOOL bShow);
 D3D9ShowCursor_t oD3D9ShowCursor = nullptr;
 
 BOOL WINAPI hkD3D9ShowCursor(IDirect3DDevice9* pDevice, BOOL bShow) {
     if (editMode > 0) {
-        return oD3D9ShowCursor(pDevice, TRUE); // Always show cursor
+        return oD3D9ShowCursor(pDevice, TRUE);
     }
     return oD3D9ShowCursor(pDevice, bShow);
 }
 
 IDirect3DDevice9* GetD3D9Device() {
-    // Create temporary D3D9 to get vtable
     IDirect3D9* pD3D = Direct3DCreate9(D3D_SDK_VERSION);
     if (!pD3D) return nullptr;
     
@@ -148,15 +132,11 @@ bool InitD3D9Hook() {
         return false;
     }
     
-    // Get vtable
     void** vtable = *(void***)pDevice;
-    
-    // ShowCursor is at index 36 in IDirect3DDevice9 vtable
     void* pShowCursor = vtable[36];
     
     pDevice->Release();
     
-    // Hook D3D9 ShowCursor
     if (MH_CreateHook(pShowCursor, &hkD3D9ShowCursor, (LPVOID*)&oD3D9ShowCursor) != MH_OK) {
         printf("Failed to hook D3D9 ShowCursor\n");
         return false;
@@ -177,31 +157,26 @@ bool InitMouseHooks() {
         return false;
     }
     
-    // Hook SetCursorPos
     if (MH_CreateHookApi(L"user32", "SetCursorPos", &hkSetCursorPos, (LPVOID*)&oSetCursorPos) != MH_OK) {
         printf("Failed to hook SetCursorPos\n");
         return false;
     }
     
-    // Hook ClipCursor
     if (MH_CreateHookApi(L"user32", "ClipCursor", &hkClipCursor, (LPVOID*)&oClipCursor) != MH_OK) {
         printf("Failed to hook ClipCursor\n");
         return false;
     }
     
-    // Hook ShowCursor
     if (MH_CreateHookApi(L"user32", "ShowCursor", &hkShowCursor, (LPVOID*)&oShowCursor) != MH_OK) {
         printf("Failed to hook ShowCursor\n");
         return false;
     }
     
-    // Hook GetRawInputData - blocks game input
     if (MH_CreateHookApi(L"user32", "GetRawInputData", &hkGetRawInputData, (LPVOID*)&oGetRawInputData) != MH_OK) {
         printf("Failed to hook GetRawInputData\n");
         return false;
     }
     
-    // Enable all hooks
     if (MH_EnableHook(MH_ALL_HOOKS) != MH_OK) {
         printf("Failed to enable hooks\n");
         return false;
@@ -209,7 +184,6 @@ bool InitMouseHooks() {
     
     printf("Mouse hooks installed!\n");
     
-    // Hook D3D9 ShowCursor
     InitD3D9Hook();
     
     return true;
@@ -219,8 +193,6 @@ void RemoveMouseHooks() {
     MH_DisableHook(MH_ALL_HOOKS);
     MH_Uninitialize();
 }
-
-// ============== UTILITY FUNCTIONS ==============
 
 uintptr_t GetModuleInfo(const wchar_t* moduleName, uintptr_t* size) {
     HMODULE hMod = GetModuleHandleW(moduleName);
@@ -298,8 +270,6 @@ float GetVelocity() {
     return speed;
 }
 
-// ============== OVERLAY ==============
-
 RECT GetTextRect(RECT* gameRect) {
     int centerX = (int)(gameRect->right * textPosX);
     int centerY = (int)(gameRect->bottom * textPosY);
@@ -350,23 +320,19 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             int x = textRect.left + (textWidth - sz.cx) / 2;
             int y = textRect.top + (textHeight - sz.cy) / 2;
         
-            // Draw edit mode box background
             if (editMode > 0) {
                 HBRUSH fillBrush = CreateSolidBrush(RGB(15, 18, 25));
                 FillRect(hdc, &textRect, fillBrush);
                 DeleteObject(fillBrush);
                 
-                // Clip text to box
                 HRGN clipRgn = CreateRectRgn(textRect.left, textRect.top, textRect.right, textRect.bottom);
                 SelectClipRgn(hdc, clipRgn);
                 DeleteObject(clipRgn);
             }
             
-            // Shadow
             SetTextColor(hdc, RGB(0, 60, 0));
             TextOutA(hdc, x + 2, y + 2, text, (int)strlen(text));
         
-            // Main text
             SetTextColor(hdc, RGB(0, 255, 0));
             TextOutA(hdc, x, y, text, (int)strlen(text));
             
@@ -375,7 +341,6 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 
                 COLORREF borderColor = (editMode == 1) ? RGB(255, 180, 50) : RGB(50, 180, 255);
                 
-                // Border
                 HPEN pen = CreatePen(PS_SOLID, 1, borderColor);
                 HPEN oldPen = (HPEN)SelectObject(hdc, pen);
                 HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
@@ -384,7 +349,6 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 SelectObject(hdc, oldBrush);
                 DeleteObject(pen);
                 
-                // Resize grip
                 if (editMode == 2) {
                     HBRUSH dotBrush = CreateSolidBrush(borderColor);
                     RECT d1 = { textRect.right - 5, textRect.bottom - 5, textRect.right - 2, textRect.bottom - 2 };
@@ -396,7 +360,6 @@ LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                     DeleteObject(dotBrush);
                 }
                 
-                // Mode label
                 HFONT labelFont = CreateFontA(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                     ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
@@ -562,19 +525,15 @@ void SetEditMode(int mode) {
     
     LONG style = GetWindowLong(overlayWnd, GWL_EXSTYLE);
     if (mode > 0) {
-        // Remove transparent flag - overlay receives mouse
         style &= ~WS_EX_TRANSPARENT;
         SetWindowLong(overlayWnd, GWL_EXSTYLE, style);
         
-        // Force unlock cursor (hooks will keep it unlocked)
         oClipCursor(NULL);
         
-        // Force show Windows cursor
         while (oShowCursor(TRUE) < 0);
         SetCursor(LoadCursor(NULL, IDC_ARROW));
         
     } else {
-        // Restore transparent flag
         style |= WS_EX_TRANSPARENT;
         SetWindowLong(overlayWnd, GWL_EXSTYLE, style);
     }
@@ -610,7 +569,6 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     }
     printf("Game window found!\n");
     
-    // Install mouse hooks
     if (!InitMouseHooks()) {
         printf("WARNING: Mouse hooks failed - edit mode may not work in-game\n");
     }
@@ -638,7 +596,6 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
         
         UpdateOverlay();
         
-        // Keep cursor visible in edit mode
         if (editMode > 0) {
             SetCursor(LoadCursor(NULL, IDC_ARROW));
         }
